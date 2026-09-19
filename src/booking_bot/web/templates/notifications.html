@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Notification Center</h2>
+<p class="page-sub">Lich su thong bao. CRITICAL bat popup ngay, WARNING gom nhom, INFO chi luu o day.</p>
+
+<div class="card">
+<table>
+  <thead><tr><th>Luc</th><th>Muc do</th><th>Loai</th><th>Noi dung</th><th>Lo hang</th><th>Da gui</th><th></th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td class="mono">{{ r.ts.strftime('%d/%m %H:%M') }}</td>
+      <td class="sev-{{ r.sev }}">{{ r.sev }}</td>
+      <td class="mono">{{ r.cat }}</td>
+      <td><b>{{ r.title }}</b><div class="muted">{{ r.body }}</div></td>
+      <td>{% if r.shipment %}<a href="/shipments/{{ r.shipment }}" class="mono">{{ r.shipment }}</a>{% endif %}</td>
+      <td class="mono muted">{{ r.delivered.strftime('%H:%M') if r.delivered else 'dang cho' }}</td>
+      <td>{% if not r.ack %}
+        <form method="post" action="/notifications/{{ r.id }}/ack"><button class="ghost" type="submit">Da doc</button></form>
+        {% else %}<span class="muted">OK</span>{% endif %}</td>
+    </tr>
+  {% else %}<tr><td colspan="7" class="muted">Chua co thong bao</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

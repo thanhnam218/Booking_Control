@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Booking Control Center</h2>
+<p class="page-sub">Tong {{ total }} lo hang dang theo doi &middot; {{ exc_count }} exception chua xu ly</p>
+
+<div class="grid tiles">
+  {% for key, meta in status_meta.items() %}
+  <div class="tile" style="border-left-color:{{ meta[1] }}">
+    <div class="n">{{ counts.get(key, 0) }}</div>
+    <div class="l">{{ key }}</div>
+    <div class="d">{{ meta[0] }}</div>
+  </div>
+  {% endfor %}
+  <div class="tile" style="border-left-color:var(--red)">
+    <div class="n">{{ exc_count }}</div>
+    <div class="l">Exception</div>
+    <div class="d"><a href="/exceptions">Xem & xu ly</a></div>
+  </div>
+</div>
+
+{% if last_run %}
+<div class="card">
+  <h3>Lan quet gan nhat</h3>
+  <div class="kv">
+    <dt>Thoi diem</dt><dd>{{ last_run.started.strftime('%d/%m/%Y %H:%M:%S') }} ({{ last_run.mode }})</dd>
+    <dt>Ket qua</dt><dd>{{ last_run.files }} file &middot; {{ last_run.sheets }} sheet &middot;
+      {{ last_run.shipments }} lo (moi {{ last_run.new }}, doi {{ last_run.changed }})</dd>
+    <dt>Thong bao</dt><dd>{{ last_run.notifications }} &middot; Exception: {{ last_run.exceptions }}</dd>
+    {% if last_run.error %}<dt>Loi</dt><dd class="sev-CRITICAL">{{ last_run.error }}</dd>{% endif %}
+  </div>
+</div>
+{% endif %}
+
+<div class="two">
+  <div class="card">
+    <h3>Can xu ly gap (chua book / dang hold)</h3>
+    <table>
+      <thead><tr><th>JO</th><th>Buyer</th><th>ExFty</th><th class="right">Con</th><th>Status</th></tr></thead>
+      <tbody>
+      {% for r in late %}
+        <tr>
+          <td><a href="/shipments/{{ r.code }}" class="mono">{{ r.jo or r.code }}</a></td>
+          <td>{{ r.buyer }}</td>
+          <td class="mono">{{ r.exfty.strftime('%d/%m') if r.exfty else '-' }}</td>
+          <td class="right {{ 'late' if r.days_left is not none and r.days_left < 14 else 'soon' }}">
+            {{ r.days_left if r.days_left is not none else '-' }}</td>
+          <td><span class="pill {{ r.status }}">{{ r.status }}</span></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="muted">Khong co lo nao can gap</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>Lich xuat sap toi</h3>
+    <table>
+      <thead><tr><th>JO</th><th>Buyer</th><th>ExFty</th><th class="right">Con</th><th class="right">CBM</th><th>Status</th></tr></thead>
+      <tbody>
+      {% for r in upcoming %}
+        <tr>
+          <td><a href="/shipments/{{ r.code }}" class="mono">{{ r.jo or r.code }}</a></td>
+          <td>{{ r.buyer }}</td>
+          <td class="mono">{{ r.exfty.strftime('%d/%m') if r.exfty else '-' }}</td>
+          <td class="right">{{ r.days_left if r.days_left is not none else '-' }}</td>
+          <td class="right mono">{{ '%.1f'|format(r.cbm) if r.cbm else '-' }}</td>
+          <td><span class="pill {{ r.status }}">{{ r.status }}</span></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="muted">Chua co du lieu - bam "Quet ngay"</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

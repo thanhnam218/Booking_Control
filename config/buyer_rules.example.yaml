@@ -1,0 +1,109 @@
+# =============================================================================
+# BUYER CONFIGURATION  (SRS muc 14, 65, 67 / DMS muc 13-14)
+# =============================================================================
+# Copy thanh config/buyer_rules.yaml.
+# Co the sua truc tiep trong Web Dashboard (/buyers) - luu vao DB, uu tien hon file.
+#
+# co_required     : Yes/No  -> dien vao cot CO cua Weekly Planning
+# co_form         : Form D / Form E / Form AK ...
+# container_rule  : standard | user_review | forced:<TYPE> | lcl_only | fcl_only
+# shipment_group  : by_exfty | by_no | by_no_exfty | manual
+#                   -> cach gom nhieu dong thanh 1 lo de tinh container
+# invoice_rule    : single | multi
+# declaration_rule: one_per_shipment | one_per_invoice | user_review
+# site            : TDV | TGV | (bo trong = theo site_rules trong config.yaml)
+# lcl_threshold_cbm: ghi de nguong LCL rieng cho buyer nay
+# =============================================================================
+
+version: 1
+
+default:
+  co_required: false
+  co_form: ""
+  container_rule: "standard"
+  shipment_group: "by_no_exfty"
+  invoice_rule: "multi"
+  declaration_rule: "user_review"
+  site: ""
+
+buyers:
+
+  - code: "ABC"
+    canonical_name: "ABC"
+    aliases: ["ABC CO", "ABC CO.,LTD", "ABC COMPANY", "ABC LTD"]
+    co_required: true
+    co_form: "Form D"
+    container_rule: "standard"
+    shipment_group: "by_no_exfty"
+    invoice_rule: "multi"
+    declaration_rule: "one_per_shipment"
+    destination_default: "SINGAPORE"
+
+  - code: "XYZ"
+    canonical_name: "XYZ"
+    aliases: ["XYZ INC", "XYZ CORP"]
+    co_required: false
+    co_form: ""
+    container_rule: "standard"
+    shipment_group: "by_no_exfty"
+    invoice_rule: "single"
+    declaration_rule: "one_per_invoice"
+    destination_default: "LOS ANGELES"
+
+  - code: "DEF"
+    canonical_name: "DEF"
+    aliases: ["DEF GMBH", "DEF EUROPE"]
+    co_required: true
+    co_form: "Form E"
+    # Buyer nay luon phai User duyet container -> Bot khong tu quyet
+    container_rule: "user_review"
+    shipment_group: "by_no"
+    invoice_rule: "multi"
+    declaration_rule: "user_review"
+    destination_default: "HAMBURG"
+
+  - code: "IKEA"
+    canonical_name: "IKEA"
+    aliases: ["IKEA SUPPLY", "IKEA AG", "INTER IKEA"]
+    co_required: true
+    co_form: "Form AK"
+    container_rule: "standard"
+    shipment_group: "by_exfty"     # gom tat ca JO cung ngay xuat lai 1 lo
+    invoice_rule: "multi"
+    declaration_rule: "one_per_shipment"
+    site: "TDV"
+    lcl_threshold_cbm: 20
+
+  - code: "SAMSUNG"
+    canonical_name: "SAMSUNG"
+    aliases: ["SAMSUNG ELEC", "SS ELECTRONICS"]
+    co_required: false
+    co_form: ""
+    # Buyer bat buoc di AIR -> Type = AC, khong tinh container bien
+    container_rule: "forced:AC"
+    shipment_group: "by_no_exfty"
+    invoice_rule: "single"
+    declaration_rule: "one_per_invoice"
+    destination_default: "INCHEON"
+
+# -----------------------------------------------------------------------------
+# HOLD REASON - danh muc dung chung (SRS muc 32)
+# -----------------------------------------------------------------------------
+hold_reasons:
+  - code: "CUSTOMER"
+    label: "Cho khach xac nhan"
+  - code: "INVOICE"
+    label: "Chua co / sai Invoice"
+  - code: "CUSTOMS"
+    label: "Vuong hai quan"
+  - code: "SCHEDULE"
+    label: "Lich tau / chuyen bay doi"
+  - code: "MISSING_INFO"
+    label: "Thieu thong tin"
+  - code: "CAPACITY"
+    label: "Khong du cho / container"
+  - code: "MERGE_WAIT"
+    label: "Cho lo sau de gop xuat chung"
+  - code: "OTHER"
+    label: "Khac (bat buoc nhap chi tiet)"
+    require_detail: true

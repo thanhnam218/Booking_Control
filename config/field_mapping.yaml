@@ -1,0 +1,283 @@
+# =============================================================================
+# DATA DICTIONARY  -  Canonical Field  <->  Header thuc te trong Excel
+# =============================================================================
+# Day la "trai tim" cua he thong (DMS muc 4-5). KHONG hard-code cot A/B/C trong
+# source code. Bot doc file nay de hieu header cua tung sheet Follow Up.
+#
+# Cach hoat dong:
+#   1. Bot doc dong header cua sheet.
+#   2. Chuan hoa chuoi (bo dau cach, ky tu dac biet, viet thuong).
+#   3. So khop voi `aliases` -> confidence = 100%.
+#   4. Neu khong khop chinh xac -> fuzzy match. Confidence >= fuzzy_accept
+#      thi nhan, tu fuzzy_review den fuzzy_accept thi hoi User xac nhan,
+#      duoi fuzzy_review thi bo qua.
+#   5. Mapping da duoc User xac nhan se duoc luu vao DB (bang column_mappings)
+#      va uu tien hon file YAML nay.
+# =============================================================================
+
+version: 1
+
+matching:
+  fuzzy_accept: 0.88      # >= : tu dong nhan
+  fuzzy_review: 0.65      # >= : dua vao Exception Center cho User xac nhan
+  case_sensitive: false
+
+# Nguong nhan dien mot sheet la "Follow Up" (SRS muc 6)
+sheet_detection:
+  # Bat buoc phai co it nhat ngan nay truong trong nhom `required_any`
+  min_required_hits: 3
+  # Diem tin cay toi thieu de tu dong scan
+  auto_accept_confidence: 0.80
+  # Duoi muc nay -> bo qua han
+  ignore_below_confidence: 0.35
+  required_any:
+    - ShipmentNo
+    - ExFtyDate
+    - JO
+    - FinalCBM
+    - Invoice
+    - FinalExportQty
+  # Sheet co ten khop cac pattern nay se bi bo qua ngay (khong ton thoi gian)
+  ignore_sheet_patterns:
+    - "^summary$"
+    - "^report$"
+    - "^data$"
+    - "^template$"
+    - "^note"
+    - "^huong dan"
+    - "^sheet[0-9]*$"
+  # Toi da bao nhieu dong dau tien duoc do tim dong header
+  header_search_rows: 15
+
+# -----------------------------------------------------------------------------
+# CANONICAL FIELDS
+# -----------------------------------------------------------------------------
+# type: string | date | decimal | int | bool | flag
+# required: bat buoc phai co de dong duoc coi la hop le
+# -----------------------------------------------------------------------------
+fields:
+
+  ShipmentNo:
+    type: string
+    required: true
+    description: "So NO / so folder xuat khau. Thanh phan cua Shipment Key."
+    aliases: ["No", "NO.", "No.", "STT", "So NO", "NO Folder", "Folder No",
+              "Shipment No", "ShipmentNo", "Export No", "So folder"]
+
+  ExFtyDate:
+    type: date
+    required: true
+    description: "Ngay xuat khoi nha may. Goc tinh toan moi deadline T-20..T-1."
+    aliases: ["ExFtyDate", "Ex Fty Date", "EXFTY DATE", "EXFTY", "ExFty",
+              "Ex-Fty Date", "Export Factory Date", "Ngay xuat", "ETD Factory",
+              "Ex Factory Date", "ExFactoryDate"]
+
+  Buyer:
+    type: string
+    required: true
+    description: "Khach hang. Neu sheet khong co cot nay thi lay tu ten sheet."
+    aliases: ["BUYER", "Buyer", "Customer Name", "CustomerName", "Customer",
+              "Khach hang", "Client", "Consignee"]
+
+  JO:
+    type: string
+    required: true
+    description: "Job Order. KHONG phai primary key (1 JO co the nhieu ExFtyDate)."
+    aliases: ["JO", "JO No", "JO#", "JobOrder", "Job Order", "Job No",
+              "JO Number", "So JO"]
+
+  CustomsCode:
+    type: string
+    required: false
+    description: "Ma HS / Customs Code (GO) - dung cho file Custom Code."
+    aliases: ["Customs Code(GO)", "Customs Code", "CustomsCode", "HS Code",
+              "HSCode", "Customs Code (GO)", "Ma HS", "Code GO", "GO Code"]
+
+  ShipMode:
+    type: string
+    required: false
+    description: "AIR / SEA. Chuan hoa qua bang ship_mode duoi day."
+    aliases: ["Ship", "Ship Mode", "ShipMode", "Mode", "Shipment Mode",
+              "Transport", "By", "Phuong thuc", "MODE"]
+
+  Destination:
+    type: string
+    required: false
+    aliases: ["Destination", "Dest", "POD", "Port of Discharge", "Cang den",
+              "Noi den", "Country"]
+
+  OrderQty:
+    type: decimal
+    required: false
+    aliases: ["OrderQty", "Order Qty", "Order Quantity", "Qty Order", "SL dat"]
+
+  Invoice:
+    type: string
+    required: false
+    description: "So invoice. 1 shipment co the co NHIEU invoice (tach bang , ; /)."
+    aliases: ["EELInvoice", "EEL Invoice", "Invoice", "INV", "Inv", "Invoice No",
+              "InvoiceNo", "So Invoice", "Commercial Invoice"]
+
+  FinalExportQty:
+    type: decimal
+    required: false
+    aliases: ["FinalExportQty", "Final Export Qty", "Final Qty", "FinalQty",
+              "PCS", "Pcs", "Export Qty", "SL xuat", "Actual Qty"]
+
+  FinalCartonQty:
+    type: decimal
+    required: false
+    aliases: ["Final CartonQty", "Final Carton Qty", "FinalCartonQty", "Carton",
+              "CTN", "Ctns", "Carton Qty", "So thung", "Total Carton"]
+
+  GrossWeight:
+    type: decimal
+    required: false
+    aliases: ["Gross Weight (GW)", "Gross Weight", "GW", "G.W", "G.W.",
+              "GrossWeight", "Trong luong"]
+
+  FinalCBM:
+    type: decimal
+    required: false
+    description: "So khoi. Dau vao cua Container Allocation Engine."
+    aliases: ["Final CBM", "FinalCBM", "CBM", "M3", "Final CBM (M3)", "Total CBM",
+              "Volume", "Khoi"]
+
+  CDF:
+    type: string
+    required: false
+    description: "To khai hai quan. Co gia tri -> dieu kien chuyen sang GREEN."
+    aliases: ["CDF", "C/D", "CD", "Customs Declaration", "To khai", "CDF No",
+              "Declaration No"]
+
+  BL:
+    type: string
+    required: false
+    description: "Bill of Lading / AWB. Co gia tri -> dieu kien chuyen sang GREEN."
+    aliases: ["BL", "B/L", "BL No", "BL Number", "AWB", "MBL", "HBL",
+              "Bill of Lading", "Van don"]
+
+  Price:
+    type: decimal
+    required: false
+    aliases: ["Price", "Unit Price", "Gia", "Amount", "Value", "FOB Price"]
+
+  DiscountPrice:
+    type: decimal
+    required: false
+    aliases: ["Discount Price", "DiscountPrice", "Disc Price", "Gia sau CK",
+              "Net Price", "Discount"]
+
+  BookingFlag:
+    type: flag
+    required: false
+    description: "Da booking hay chua. Neu file khong co cot nay, Bot suy ra tu Booking No/CDF/BL."
+    aliases: ["Booking", "Booked", "Booking Status", "BKG", "Booking No",
+              "BookingNo", "Da book", "Book"]
+
+  HoldFlag:
+    type: flag
+    required: false
+    aliases: ["Hold", "HOLD", "On Hold", "Hold?", "Tam dung", "Giu hang"]
+
+  HoldReason:
+    type: string
+    required: false
+    aliases: ["Hold Reason", "HoldReason", "Reason", "Ly do", "Ly do hold",
+              "Remark Hold"]
+
+  CancelFlag:
+    type: flag
+    required: false
+    aliases: ["Cancel", "Cancelled", "Canceled", "Huy", "Da huy"]
+
+  PIC:
+    type: string
+    required: false
+    description: "Nguoi phu trach / nguoi xuat. Mac dinh lay tu owner cua file Follow Up."
+    aliases: ["PIC", "Person In Charge", "Nguoi xuat", "Nguoi phu trach",
+              "Handler", "Staff", "Owner", "Merchandiser"]
+
+  Remark:
+    type: string
+    required: false
+    aliases: ["Remark", "Remarks", "Note", "Notes", "Ghi chu", "Comment"]
+
+  ShippedFlag:
+    type: flag
+    required: false
+    description: "Da xuat xong thuc te. Dung cho trang thai COMPLETED / PARTIAL."
+    aliases: ["Shipped", "Da xuat", "Completed", "Actual Ship", "Ship Done",
+              "Hoan thanh"]
+
+  ShippedQty:
+    type: decimal
+    required: false
+    description: "So luong da xuat thuc te. < FinalExportQty -> PARTIAL."
+    aliases: ["Shipped Qty", "ShippedQty", "Actual Shipped", "SL da xuat",
+              "Loaded Qty"]
+
+# -----------------------------------------------------------------------------
+# VALUE NORMALIZATION - chuan hoa GIA TRI (khong phai ten cot)
+# -----------------------------------------------------------------------------
+value_maps:
+
+  ship_mode:
+    AIR: ["AIR", "Air", "A", "By Air", "AIRFREIGHT", "Air Freight", "MAY BAY", "HANG KHONG"]
+    SEA: ["SEA", "Sea", "S", "By Sea", "OCEAN", "Vessel", "TAU", "DUONG BIEN"]
+    EXPRESS: ["EXPRESS", "DHL", "FEDEX", "UPS", "COURIER", "CHUYEN PHAT"]
+
+  truthy:
+    - "YES"
+    - "Y"
+    - "TRUE"
+    - "1"
+    - "X"
+    - "V"
+    - "OK"
+    - "DONE"
+    - "CO"
+    - "DA BOOK"
+    - "BOOKED"
+  falsy:
+    - "NO"
+    - "N"
+    - "FALSE"
+    - "0"
+    - "-"
+    - "NA"
+    - "N/A"
+    - "KHONG"
+    - "CHUA"
+    - "PENDING"
+
+  # Cac gia tri duoc coi la O TRONG (khi kiem tra CDF / BL)
+  blank_equivalents:
+    - ""
+    - "-"
+    - "--"
+    - "N/A"
+    - "NA"
+    - "NONE"
+    - "TBA"
+    - "TBC"
+    - "PENDING"
+    - "WAITING"
+    - "CHUA CO"
+    - "?"
+
+# Thu tu uu tien khi parse ngay (SRS/DMS muc 7). day_first = dinh dang VN.
+date_parsing:
+  day_first: true
+  formats:
+    - "%d/%m/%Y"
+    - "%d-%m-%Y"
+    - "%d.%m.%Y"
+    - "%Y-%m-%d"
+    - "%Y/%m/%d"
+    - "%m/%d/%Y"
+    - "%d/%m/%y"
+    - "%d-%b-%Y"
+    - "%d %b %Y"
+    - "%b %d, %Y"
+  canonical: "%Y-%m-%d"

@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Du lieu chay that - KHONG duoc commit (chua thong tin khach hang)
+data/
+backups/
+logs/
+*.db
+*.sqlite3
+config/config.yaml
+config/buyer_rules.yaml
+sample_data/*.xlsx
+!sample_data/.gitkeep
+
+# Anh chup man hinh dung trong README thi GIU LAI
+!docs/images/*.png
+
+# Excel tam
+~$*.xlsx
+*.xlsx.bak
+
+# IDE / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store

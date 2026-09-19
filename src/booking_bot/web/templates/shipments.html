@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Lo hang</h2>
+<p class="page-sub">{{ rows|length }} ban ghi &middot; loc theo Buyer / PIC / trang thai / so ngay con lai</p>
+
+<form class="inline toolbar" method="get">
+  <select name="status"><option value="">-- Trang thai --</option>
+    {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if f.status==s }}>{{ s }}</option>{% endfor %}
+  </select>
+  <select name="buyer"><option value="">-- Buyer --</option>
+    {% for b in buyers %}<option value="{{ b }}" {{ 'selected' if f.buyer==b }}>{{ b }}</option>{% endfor %}
+  </select>
+  <select name="pic"><option value="">-- PIC --</option>
+    {% for p in pics %}<option value="{{ p }}" {{ 'selected' if f.pic==p }}>{{ p }}</option>{% endfor %}
+  </select>
+  <select name="site"><option value="">-- Co so --</option>
+    <option value="TDV" {{ 'selected' if f.site=='TDV' }}>TDV (Co so 2)</option>
+    <option value="TGV" {{ 'selected' if f.site=='TGV' }}>TGV (Co so 1)</option>
+  </select>
+  <select name="days"><option value="0">-- Ngay con lai --</option>
+    {% for d in [3,7,14,20,30] %}<option value="{{ d }}" {{ 'selected' if f.days==d }}>&le; {{ d }} ngay</option>{% endfor %}
+  </select>
+  <input name="q" placeholder="JO hoac NO" value="{{ f.q }}">
+  <button type="submit">Loc</button>
+  <a class="btn ghost" href="/shipments">Xoa loc</a>
+</form>
+
+<div class="card">
+<table>
+  <thead><tr>
+    <th>NO</th><th>JO</th><th>Buyer</th><th>ExFty</th><th class="right">Con</th>
+    <th class="right">PCS</th><th class="right">CBM</th><th>Mode</th><th>CDF</th><th>BL</th>
+    <th>PIC</th><th>Site</th><th>CO</th><th>Status</th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td class="mono">{{ r.no }}</td>
+      <td><a href="/shipments/{{ r.code }}" class="mono">{{ r.jo or r.code }}</a></td>
+      <td>{{ r.buyer }}</td>
+      <td class="mono">{{ r.exfty.strftime('%d/%m/%y') if r.exfty else '-' }}</td>
+      <td class="right {{ 'late' if r.days_left is not none and r.days_left < 7 else ('soon' if r.days_left is not none and r.days_left < 14 else '') }}">
+        {{ r.days_left if r.days_left is not none else '-' }}</td>
+      <td class="right mono">{{ r.pcs|int if r.pcs else '-' }}</td>
+      <td class="right mono">{{ '%.2f'|format(r.cbm) if r.cbm else '-' }}</td>
+      <td>{{ r.mode }}{% if r.booking_mode %} / {{ r.booking_mode }}{% endif %}</td>
+      <td class="mono">{{ r.cdf or '' }}</td>
+      <td class="mono">{{ r.bl or '' }}</td>
+      <td>{{ r.pic }}</td>
+      <td>{{ r.site }}</td>
+      <td>{{ r.co }}{% if r.co_form %} ({{ r.co_form }}){% endif %}</td>
+      <td><span class="pill {{ r.status }}">{{ r.status }}</span>
+        {% if r.overridden %}<span class="muted" title="User override">*</span>{% endif %}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="14" class="muted">Khong co ban ghi nao khop bo loc</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "booking-deadline-bot"
+version = "1.0.0"
+description = "Phan mem tu dong quan ly deadline booking xuat khau - quet Excel Follow Up, tinh trang thai booking, phan bo container, nhac deadline va cap nhat cac file Planning."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "JM" }]
+keywords = ["logistics", "export", "booking", "excel", "automation", "shipping"]
+classifiers = [
+    "Programming Language :: Python :: 3.11",
+    "Operating System :: Microsoft :: Windows",
+    "Topic :: Office/Business",
+]
+
+dependencies = [
+    "openpyxl>=3.1.2",
+    "SQLAlchemy>=2.0.25",
+    "pydantic>=2.5.0",
+    "PyYAML>=6.0.1",
+    "APScheduler>=3.10.4",
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "jinja2>=3.1.3",
+    "python-multipart>=0.0.7",
+    "typer>=0.9.0",
+    "rich>=13.7.0",
+    "portalocker>=2.8.2",
+]
+
+[project.optional-dependencies]
+windows = [
+    "pystray>=0.19.5",
+    "Pillow>=10.2.0",
+    "winotify>=1.1.0",
+    "pywin32>=306; sys_platform == 'win32'",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+    "freezegun>=1.4.0",
+    "ruff>=0.2.0",
+    "pyinstaller>=6.3.0",
+]
+
+[project.scripts]
+bookingbot = "booking_bot.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+booking_bot = ["web/templates/*.html", "web/static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008", "E501"]

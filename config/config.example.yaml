@@ -1,0 +1,268 @@
+# =============================================================================
+# BOOKING DEADLINE BOT - CAU HINH CHINH
+# =============================================================================
+# Copy file nay thanh config/config.yaml roi sua theo moi truong cua ban.
+#   PowerShell:  Copy-Item config\config.example.yaml config\config.yaml
+# File config.yaml da nam trong .gitignore (vi chua duong dan noi bo cong ty).
+# =============================================================================
+
+app:
+  name: "Booking Deadline Bot"
+  timezone: "Asia/Ho_Chi_Minh"
+  language: "vi"
+  # Thu muc luu DB / log / backup. Mac dinh: %LOCALAPPDATA%\BookingBot
+  data_dir: "./data"
+  log_level: "INFO"
+
+database:
+  # SQLite cho 1 may / it user. Doi sang SQL Server khi nhieu user dung chung.
+  url: "sqlite:///./data/bookingbot.db"
+  # url: "mssql+pyodbc://user:pass@SERVER/BookingBot?driver=ODBC+Driver+17+for+SQL+Server"
+  echo: false
+
+# -----------------------------------------------------------------------------
+# NGUOI DUNG  (SRS muc 58-59)
+# -----------------------------------------------------------------------------
+users:
+  - name: "user_a"
+    display_name: "Nguyen Van A"
+    email: "a@company.com"
+    role: "user"          # admin | user
+  - name: "user_b"
+    display_name: "Tran Thi B"
+    email: "b@company.com"
+    role: "user"
+  - name: "admin"
+    display_name: "Quan tri"
+    email: "admin@company.com"
+    role: "admin"
+
+# -----------------------------------------------------------------------------
+# FILE REGISTRY  (DMS muc 2)
+# -----------------------------------------------------------------------------
+# role:
+#   follow_up         F01 - nguon chinh, moi user 1 file
+#   weekly_planning   F02 - dich, T-7
+#   custom_code       F03 - dich, T-7
+#   mm_daily          F04 - dich
+#   shipping_schedule F05 - dich, T-1 (TDV/TGV)
+#
+# LUU Y OneDrive/SharePoint: dung duong dan da sync ve may (C:\Users\...\OneDrive - Cong ty\...)
+# thay vi URL. Bot ghi vao file local, OneDrive tu dong sync len cloud.
+files:
+
+  - id: "F01-A"
+    role: "follow_up"
+    display_name: "Follow Up - Nguyen Van A"
+    path: "./sample_data/FollowUp_UserA.xlsx"
+    owner: "user_a"
+    storage: "local"      # local | onedrive | sharepoint
+    read: true
+    write: true           # Bot duoc to mau dong tren file nay
+
+  - id: "F01-B"
+    role: "follow_up"
+    display_name: "Follow Up - Tran Thi B"
+    path: "./sample_data/FollowUp_UserB.xlsx"
+    owner: "user_b"
+    storage: "local"
+    read: true
+    write: true
+
+  - id: "F02"
+    role: "weekly_planning"
+    display_name: "WEEKLY PLANNING 2026"
+    path: "./sample_data/WEEKLY_PLANNING_2026.xlsx"
+    sheet: "2026"                 # de trong = tu dong tim sheet co header khop
+    header_row: 1                 # de trong = tu dong do
+    owner: "common"
+    storage: "local"
+    read: true
+    write: true
+
+  - id: "F03"
+    role: "custom_code"
+    display_name: "Custom Code"
+    path: "./sample_data/CUSTOM_CODE.xlsx"
+    sheet: "HS CODE"
+    header_row: 1
+    owner: "common"
+    storage: "local"
+    read: true
+    write: true
+
+  - id: "F04"
+    role: "mm_daily"
+    display_name: "MM-DAILY PLANNING SEP 2026 (GV)"
+    path: "./sample_data/MM_DAILY_PLANNING_SEP_2026_GV.xlsx"
+    sheet: "DAILY"
+    header_row: 1
+    owner: "common"
+    storage: "local"
+    read: true
+    write: true
+
+  - id: "F05"
+    role: "shipping_schedule"
+    display_name: "Lich xuat hang - IP (DV)"
+    path: "./sample_data/LICH_XUAT_HANG_IP_DV.xlsx"
+    # File nay co 2 sheet cho 2 co so
+    sheets_by_site:
+      TDV: "TDV"        # Co so 2
+      TGV: "TGV"        # Co so 1
+    header_row: 1
+    owner: "common"
+    storage: "local"
+    read: true
+    write: true
+
+# Quy tac xac dinh shipment thuoc co so nao (SRS muc 26)
+# order: kiem tra lan luot tu tren xuong; khong khop -> default_site
+site_rules:
+  default_site: "TGV"
+  rules:
+    - when: { field: "PIC", in: ["Nguyen Van A", "user_a"] }
+      site: "TGV"
+    - when: { field: "PIC", in: ["Tran Thi B", "user_b"] }
+      site: "TDV"
+    - when: { field: "Buyer", in: ["IKEA"] }
+      site: "TDV"
+
+# -----------------------------------------------------------------------------
+# SCHEDULER  (SRS muc 42-43)
+# -----------------------------------------------------------------------------
+scheduler:
+  scan_interval_hours: 3        # cho phep 1-4
+  scan_anchor_hour: 9           # moc bat dau: 09:00, 12:00, 15:00, 18:00...
+  run_on_start: true
+  notification_window:
+    start: "08:00"
+    end: "16:00"
+  active_weekdays: ["mon", "tue", "wed", "thu", "fri", "sat"]
+  # Ngoai gio thong bao: Bot van scan, nhung don thong bao lai va ban ngay hom sau
+  queue_outside_window: true
+
+# -----------------------------------------------------------------------------
+# DEADLINE / REMINDER  (SRS muc 44-46)
+# -----------------------------------------------------------------------------
+deadlines:
+  booking_window:
+    start_days_before: 20       # T-20 bat dau nhac
+    end_days_before: 14         # T-14 het cua so -> nang len CRITICAL
+  hold_reminder_days: 3         # cho phep 1-7
+  milestones:
+    weekly_planning_days_before: 7    # T-7
+    custom_code_days_before: 7        # T-7
+    final_info_days_before: 3         # T-3
+    shipping_schedule_days_before: 1  # T-1
+  # Chong spam: cung 1 shipment + cung 1 loai thong bao chi ban lai sau N gio
+  dedup_hours: 20
+  # Thong bao cho ca shipment da qua han (ExFtyDate < hom nay) bao nhieu ngay
+  overdue_grace_days: 3
+
+# -----------------------------------------------------------------------------
+# CONTAINER ENGINE  (SRS muc 15-19)
+# -----------------------------------------------------------------------------
+container:
+  capacity:
+    "40HC": 63
+    "40DC": 53
+    "20ST": 23
+  priority: ["40HC", "40DC", "20ST"]
+  # priority  = greedy theo thu tu uu tien (dung nhu vi du 160 CBM -> 2x40HC + 1x40DC)
+  # min_excess = tim to hop du thua it nhat (co the ra ket qua khac SRS)
+  strategy: "priority"
+  # CBM <= nguong nay va ShipMode=SEA -> de xuat LCL/CFS thay vi FCL
+  lcl_threshold_cbm: 15
+  # He so an toan: capacity phai >= CBM * safety_factor
+  safety_factor: 1.0
+  air_type: "AC"
+  lcl_type: "CFS"
+
+# -----------------------------------------------------------------------------
+# STATUS ENGINE  (SRS muc 27-33)
+# -----------------------------------------------------------------------------
+status:
+  colors:
+    WHITE:     "FFFFFFFF"
+    YELLOW:    "FFFFFF00"
+    GREEN:     "FF92D050"    # Light Green
+    RED:       "FFFF0000"
+    COMPLETED: "FF00B0F0"    # Xanh duong - da xuat xong
+    PARTIAL:   "FFFFC000"    # Cam - xuat mot phan
+    CANCELLED: "FFBFBFBF"    # Xam - da huy
+  # Mau tu dinh nghia (SRS: "cac mau con lai co the gan thong bao theo y tung nguoi")
+  custom:
+    - name: "URGENT_DOC"
+      color: "FFFF00FF"
+      label: "Gap chung tu"
+      notify: true
+    - name: "WAIT_CUSTOMER"
+      color: "FF7030A0"
+      label: "Cho khach xac nhan"
+      notify: false
+  # Bot co duoc phep to mau truc tiep len file Follow Up khong
+  write_color_to_excel: true
+
+# -----------------------------------------------------------------------------
+# GHI FILE EXCEL - AN TOAN DU LIEU  (SRS muc 37-41, 54)
+# -----------------------------------------------------------------------------
+excel_write:
+  dry_run_default: false        # true = khong bao gio ghi that, chi bao cao
+  backup_before_write: true
+  backup_keep_versions: 20
+  conflict_policy: "stop"       # stop | queue  (KHONG BAO GIO overwrite)
+  lock_retry_seconds: [30, 60, 120]
+  pending_queue_max_age_hours: 72
+  verify_after_write: true      # doc lai de xac nhan da ghi dung
+
+# -----------------------------------------------------------------------------
+# THONG BAO  (SRS muc 49-51)
+# -----------------------------------------------------------------------------
+notification:
+  channels:
+    toast: true                 # Windows toast (winotify)
+    popup: true                 # Cua so popup co Context + [Open Source]
+    tray_balloon: true
+    console: true               # luon bat khi chay CLI
+  severity_to_channel:
+    CRITICAL: ["popup", "toast"]
+    WARNING:  ["toast"]
+    INFO:     ["tray_balloon"]
+  # Gom nhom WARNING: 1 toast tong hop thay vi 20 toast
+  group_warnings: true
+  max_popups_per_scan: 5
+
+# -----------------------------------------------------------------------------
+# WEB DASHBOARD
+# -----------------------------------------------------------------------------
+web:
+  enabled: true
+  host: "127.0.0.1"
+  port: 8765
+  open_browser_on_start: false
+  # De trong = khong yeu cau dang nhap (chi lang nghe 127.0.0.1)
+  basic_auth_user: ""
+  basic_auth_password: ""
+
+# -----------------------------------------------------------------------------
+# OUTLOOK  (yeu cau: "cap nhat trang thai da book hay chua tu mail outlook")
+# -----------------------------------------------------------------------------
+outlook:
+  enabled: false                # bat len khi chay tren may co Outlook desktop
+  folders: ["Inbox", "Booking"]
+  lookback_days: 30
+  # Mail co chua 1 trong cac tu khoa nay -> coi la xac nhan booking
+  booking_confirm_keywords:
+    - "booking confirmation"
+    - "booking confirmed"
+    - "BKG CONFIRM"
+    - "S/O"
+    - "shipping order"
+    - "xac nhan booking"
+  cancel_keywords:
+    - "booking cancel"
+    - "cancelled"
+    - "huy booking"
+  # Bot chi GOI Y, User phai xac nhan trong Exception Center truoc khi doi trang thai
+  auto_apply: false

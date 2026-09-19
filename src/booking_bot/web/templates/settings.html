@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Cai dat</h2>
+<p class="page-sub">Thay doi co hieu luc ngay. De luu vinh vien, sua them trong <span class="mono">config/config.yaml</span>.</p>
+
+<div class="card">
+<form method="post" action="/settings">
+  <div class="two">
+    <div>
+      <h3>Lich quet &amp; thong bao</h3>
+      <dl class="kv">
+        <dt>Chu ky quet (1-4 gio)</dt>
+        <dd><input type="number" name="scan_interval_hours" min="1" max="4"
+              value="{{ cfg.scheduler.scan_interval_hours }}"></dd>
+        <dt>Khung gio thong bao</dt>
+        <dd><input type="time" name="notify_start" value="{{ cfg.scheduler.notification_window.start }}">
+            &ndash; <input type="time" name="notify_end" value="{{ cfg.scheduler.notification_window.end }}"></dd>
+        <dt>Ngay lam viec</dt><dd class="mono">{{ cfg.scheduler.active_weekdays|join(', ') }}</dd>
+        <dt>Ngoai gio</dt><dd>{{ 'Don lai, phat khi den gio' if cfg.scheduler.queue_outside_window else 'Bo qua' }}</dd>
+      </dl>
+    </div>
+    <div>
+      <h3>Deadline</h3>
+      <dl class="kv">
+        <dt>Cua so booking</dt>
+        <dd>T-<input type="number" name="booking_start" min="1" max="60" size="3"
+              value="{{ cfg.deadlines.booking_window.start_days_before }}">
+            &rarr; T-<input type="number" name="booking_end" min="1" max="60" size="3"
+              value="{{ cfg.deadlines.booking_window.end_days_before }}"></dd>
+        <dt>Nhac lai khi Hold (1-7 ngay)</dt>
+        <dd><input type="number" name="hold_reminder_days" min="1" max="7"
+              value="{{ cfg.deadlines.hold_reminder_days }}"></dd>
+        <dt>Weekly Planning</dt><dd class="mono">T-{{ cfg.deadlines.milestones.weekly_planning_days_before }}</dd>
+        <dt>Custom Code</dt><dd class="mono">T-{{ cfg.deadlines.milestones.custom_code_days_before }}</dd>
+        <dt>Kiem tra thong tin</dt><dd class="mono">T-{{ cfg.deadlines.milestones.final_info_days_before }}</dd>
+        <dt>Lich xuat TDV/TGV</dt><dd class="mono">T-{{ cfg.deadlines.milestones.shipping_schedule_days_before }}</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="two" style="margin-top:8px">
+    <div>
+      <h3>Ghi file</h3>
+      <dl class="kv">
+        <dt>To mau dong Follow Up</dt>
+        <dd><select name="write_color">
+          <option value="yes" {{ 'selected' if cfg.status.write_color_to_excel }}>Co</option>
+          <option value="no" {{ 'selected' if not cfg.status.write_color_to_excel }}>Khong</option></select></dd>
+        <dt>Luon chay Dry Run</dt>
+        <dd><select name="dry_run_default">
+          <option value="no" {{ 'selected' if not cfg.excel_write.dry_run_default }}>Khong (ghi that)</option>
+          <option value="yes" {{ 'selected' if cfg.excel_write.dry_run_default }}>Co (chi bao cao)</option></select></dd>
+        <dt>Backup truoc khi ghi</dt><dd>{{ 'Co' if cfg.excel_write.backup_before_write else 'Khong' }}
+          (giu {{ cfg.excel_write.backup_keep_versions }} ban)</dd>
+        <dt>Retry khi file bi khoa</dt><dd class="mono">{{ cfg.excel_write.lock_retry_seconds|join('s / ') }}s</dd>
+        <dt>Khi file bi doi</dt><dd class="mono">{{ cfg.excel_write.conflict_policy }} (khong bao gio ghi de)</dd>
+      </dl>
+    </div>
+    <div>
+      <h3>Container</h3>
+      <dl class="kv">
+        {% for t, c in cfg.container.capacity.items() %}<dt>{{ t }}</dt><dd class="mono">{{ c }} CBM</dd>{% endfor %}
+        <dt>Uu tien</dt><dd class="mono">{{ cfg.container.priority|join(' &rarr; ')|safe }}</dd>
+        <dt>Thuat toan</dt><dd class="mono">{{ cfg.container.strategy }}</dd>
+        <dt>Nguong LCL</dt><dd class="mono">{{ cfg.container.lcl_threshold_cbm }} CBM</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div style="margin-top:14px">
+    <input name="user" value="user" size="10" placeholder="Ten ban">
+    <button type="submit">Luu cai dat</button>
+  </div>
+</form>
+</div>
+
+<div class="card">
+  <h3>File dang theo doi</h3>
+  <table>
+    <thead><tr><th>ID</th><th>Vai tro</th><th>Ten</th><th>Duong dan</th><th>Chu</th><th>Doc/Ghi</th></tr></thead>
+    <tbody>
+    {% for f in cfg.files %}
+      <tr><td class="mono">{{ f.id }}</td><td class="mono">{{ f.role }}</td><td>{{ f.display_name }}</td>
+          <td class="mono muted">{{ f.path }}</td><td>{{ f.owner }}</td>
+          <td>{{ 'R' if f.read else '' }}{{ 'W' if f.write else '' }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted" style="font-size:12px">Config dang dung: <span class="mono">{{ cfg.config_path }}</span></p>
+</div>
+{% endblock %}
