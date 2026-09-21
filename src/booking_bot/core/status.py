@@ -2,8 +2,9 @@
 
     RED       Hold = Yes                                     (uu tien cao nhat)
     CANCELLED Cancel = Yes
-    COMPLETED Da xuat xong toan bo
-    PARTIAL   Da xuat mot phan (xuat toi nay 1 nua, mai xuat tiep)
+    COMPLETED Da xuat xong toan bo: CDF + BL + (CONT + SEAL neu FCL) + ETD da qua
+    PARTIAL   Da xuat mot phan (xuat toi nay 1 nua, mai xuat tiep) - theo ShippedQty
+              hoac theo nhom cung NO: co dong da dong cont+seal, co dong chua (engine.py)
     WHITE     Chua booking
     YELLOW    Da booking nhung CDF hoac BL con thieu
     GREEN     Da booking + CDF + BL day du (~80% hoan thanh nghiep vu)
@@ -13,6 +14,7 @@ Moi ket qua deu kem "trace" de tra loi cau hoi 'Why Yellow?' (SRS muc 52).
 
 from __future__ import annotations
 
+import datetime as dt
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -59,6 +61,9 @@ def infer_booking(values: dict[str, Any], blanks: set[str] | None = None) -> tup
         return flag, False
     if has_value(flag, blanks):
         return True, False
+    # File that: cot BOOKING NO co so booking = da book
+    if has_value(values.get("BookingNo"), blanks):
+        return True, False
 
     # Khong co cot Booking: co CDF hoac BL thi chac chan da book
     if has_value(values.get("CDF"), blanks) or has_value(values.get("BL"), blanks):
@@ -71,6 +76,8 @@ def evaluate(
     *,
     blanks: set[str] | None = None,
     strict_booking_column: bool = False,
+    today: dt.date | None = None,
+    completion: dict[str, Any] | None = None,
 ) -> StatusResult:
     """Tinh trang thai Bot cho mot shipment.
 
@@ -135,10 +142,54 @@ def evaluate(
     trace.append(_t("BL", "FILLED" if bl_filled else "EMPTY", clean_text(values.get("BL"))))
 
     if cdf_filled and bl_filled:
+        done = _check_completed(values, trace, blanks, today, completion)
+        if done:
+            return StatusResult("COMPLETED", trace, done, inferred)
         return StatusResult("GREEN", trace, "Da co ca CDF va BL - nghiep vu hoan thanh ~80%", inferred)
 
     missing = [n for n, ok in (("CDF", cdf_filled), ("BL", bl_filled)) if not ok]
     return StatusResult("YELLOW", trace, f"Da book nhung con thieu: {', '.join(missing)}", inferred)
+
+
+def _check_completed(
+    values: dict[str, Any],
+    trace: list[dict[str, Any]],
+    blanks: set[str] | None,
+    today: dt.date | None,
+    completion: dict[str, Any] | None,
+) -> str:
+    """Tra ve ly do neu lo hang da XUAT XONG, nguoc lai ''.
+
+    Mac dinh: GREEN + (CONT + SEAL neu la hang FCL) + ETD <= hom nay.
+    Tra loi cau hoi goc: "lam sao biet khi nao da xuat hang xong thanh cong".
+    """
+    if completion is not None and not completion.get("enabled", True):
+        return ""
+    cfg = completion or {}
+    today = today or dt.date.today()
+    mode = str(values.get("_booking_mode") or "").upper()
+    need_cont = cfg.get("require_container_seal", True) and mode not in ("AIR", "LCL", "EXPRESS")
+
+    if need_cont:
+        cont = has_value(values.get("ContainerNo"), blanks)
+        seal = has_value(values.get("SealNo"), blanks)
+        trace.append(_t("CONT + SEAL", "FILLED" if cont and seal else "EMPTY",
+                        f"{values.get('ContainerNo') or '-'} / {values.get('SealNo') or '-'}"))
+        if not (cont and seal):
+            return ""
+
+    if cfg.get("require_etd_passed", True):
+        etd = values.get("ETD")
+        if not isinstance(etd, dt.date):
+            trace.append(_t("ETD", "EMPTY", "chua co ngay tau chay"))
+            return ""
+        passed = etd <= today
+        trace.append(_t("ETD", f"{etd:%d/%m/%Y}", "da qua" if passed else "chua toi"))
+        if not passed:
+            return ""
+
+    parts = ["CDF", "BL"] + (["CONT", "SEAL"] if need_cont else []) + ["ETD da qua"]
+    return "Da xuat xong: " + " + ".join(parts)
 
 
 def effective_status(bot_status: str, user_override: str | None) -> tuple[str, str]:

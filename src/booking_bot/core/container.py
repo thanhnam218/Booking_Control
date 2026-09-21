@@ -14,6 +14,7 @@ Vi du chuan trong SRS (dung lam test nghiem thu):
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from itertools import product
 from typing import Any
@@ -239,3 +240,86 @@ def apply_user_allocation(plan: ContainerPlan, user_quantities: dict[str, int],
     if plan.estimated_capacity + 1e-9 < plan.total_cbm:
         plan.note = "CANH BAO: phuong an cua User co capacity nho hon CBM"
     return plan
+
+
+# ---------------------------------------------------------------------------
+# Doc cot CONT TYPE User da go trong Follow Up ("1x20", "2x40HC", "LCL"...)
+# ---------------------------------------------------------------------------
+
+_TYPE_ALIASES = {
+    "20": "20ST", "20ST": "20ST", "20DC": "20ST", "20GP": "20ST", "20DV": "20ST",
+    "40": "40DC", "40DC": "40DC", "40GP": "40DC", "40ST": "40DC", "40DV": "40DC",
+    "40HC": "40HC", "40HQ": "40HC", "40H": "40HC", "HC": "40HC", "HQ": "40HC",
+}
+_PART = re.compile(r"^(?:(\d+)\s*[X*]\s*)?(\d{2})?\s*'?\s*(HC|HQ|H|DC|GP|ST|DV)?$")
+
+
+@dataclass(slots=True)
+class ContainerSpec:
+    raw: str
+    quantities: dict[str, int] = field(default_factory=dict)
+    mode: str = ""  # FCL | LCL | AIR
+    valid: bool = True
+    reason: str = ""
+
+    @property
+    def label(self) -> str:
+        if self.mode in ("LCL", "AIR"):
+            return self.mode
+        return format_type(self.quantities, list(DEFAULT_PRIORITY))
+
+    def capacity(self, capacity: dict[str, float]) -> float:
+        return sum(q * capacity.get(t, 0) for t, q in self.quantities.items())
+
+
+def parse_container_type(text: Any) -> ContainerSpec:
+    """'1x20' -> {20ST:1}; '2x40HC+1x20' -> {40HC:2, 20ST:1}; 'LCL' -> mode LCL."""
+    raw = "" if text is None else str(text).strip()
+    spec = ContainerSpec(raw=raw)
+    if not raw:
+        spec.valid, spec.reason = False, "trong"
+        return spec
+
+    s = raw.upper().replace("’", "'").replace("×", "X").replace(" ", "")
+    if s in ("LCL", "CFS", "LCL/CFS"):
+        spec.mode = "LCL"
+        return spec
+    if s in ("AIR", "AC", "AIRFREIGHT"):
+        spec.mode = "AIR"
+        return spec
+
+    qty: dict[str, int] = {}
+    for part in re.split(r"[+,;&]|AND", s):
+        if not part:
+            continue
+        m = _PART.match(part.replace("'", ""))
+        if not m or not (m.group(2) or m.group(3)):
+            spec.valid, spec.reason = False, f"khong hieu '{part}'"
+            return spec
+        n = int(m.group(1) or 1)
+        size = m.group(2) or "40"
+        suffix = m.group(3) or ""
+        key = _TYPE_ALIASES.get(size + suffix) or _TYPE_ALIASES.get(size + ("HC" if suffix == "H" else suffix))
+        if key is None:
+            spec.valid, spec.reason = False, f"loai cont '{size}{suffix}' chua duoc ho tro"
+            return spec
+        qty[key] = qty.get(key, 0) + n
+
+    spec.quantities = qty
+    spec.mode = "FCL"
+    return spec
+
+
+def merge_specs(specs: list[ContainerSpec]) -> ContainerSpec:
+    """Cong nhieu o CONT TYPE (khac nhau) cua cung 1 nhom thanh 1 phuong an."""
+    out = ContainerSpec(raw=" + ".join(s.raw for s in specs), mode="FCL")
+    modes = {s.mode for s in specs}
+    if len(modes) == 1 and modes & {"LCL", "AIR"}:
+        out.mode = modes.pop()
+        return out
+    for s in specs:
+        if not s.valid:
+            out.valid, out.reason = False, s.reason
+        for t, q in s.quantities.items():
+            out.quantities[t] = out.quantities.get(t, 0) + q
+    return out

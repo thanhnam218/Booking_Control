@@ -178,6 +178,31 @@ class Shipment(Base):
     site: Mapped[str] = mapped_column(String(20), default="")  # TDV | TGV
     remark: Mapped[str] = mapped_column(Text, default="")
 
+    # Cot bo sung tu file Follow Up that (47 cot)
+    go: Mapped[str] = mapped_column(String(80), default="")
+    po: Mapped[str] = mapped_column(String(80), default="")
+    style: Mapped[str] = mapped_column(String(80), default="")
+    booking_no: Mapped[str] = mapped_column(String(80), default="")
+    booking_date: Mapped[dt.date | None] = mapped_column(Date)
+    etd: Mapped[dt.date | None] = mapped_column(Date)
+    eta: Mapped[dt.date | None] = mapped_column(Date)
+    vessel: Mapped[str] = mapped_column(String(120), default="")
+    port: Mapped[str] = mapped_column(String(80), default="")
+    closing_time: Mapped[str] = mapped_column(String(80), default="")
+    container_type_user: Mapped[str] = mapped_column(String(80), default="")  # CONT TYPE User go
+    container_no: Mapped[str] = mapped_column(String(80), default="")
+    seal_no: Mapped[str] = mapped_column(String(80), default="")
+    co_no: Mapped[str] = mapped_column(String(120), default="")
+    term: Mapped[str] = mapped_column(String(20), default="")
+    currency: Mapped[str] = mapped_column(String(10), default="")
+    cdf_amount: Mapped[float | None] = mapped_column(Float)
+    tsn_amount: Mapped[float | None] = mapped_column(Float)
+    derived_notes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+    # Mau dong: Bot to lan cuoi / User to tay (USER > BOT)
+    last_bot_color: Mapped[str] = mapped_column(String(12), default="")
+    user_color: Mapped[str] = mapped_column(String(12), default="")
+
     # Co trang thai
     booking_flag: Mapped[bool] = mapped_column(Boolean, default=False)
     hold_flag: Mapped[bool] = mapped_column(Boolean, default=False)

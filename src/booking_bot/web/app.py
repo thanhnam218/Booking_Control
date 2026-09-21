@@ -203,6 +203,13 @@ def create_app(engine=None, scheduler=None) -> FastAPI:
                 "group_key": sh.group_key,
                 "remark": sh.remark,
                 "hold_reason": sh.hold_reason,
+                "booking_no": sh.booking_no,
+                "etd": sh.etd, "eta": sh.eta, "vessel": sh.vessel,
+                "container_type_user": sh.container_type_user,
+                "container_no": sh.container_no, "seal_no": sh.seal_no,
+                "closing_time": sh.closing_time, "go": sh.go,
+                "derived_notes": sh.derived_notes or {},
+                "user_color": sh.user_color,
             })
             alloc_d = _alloc_dict(alloc)
             ovs = [{"field": o.field, "value": o.user_value, "user": o.user_name,

@@ -32,6 +32,10 @@ users:
     display_name: "Tran Thi B"
     email: "b@company.com"
     role: "user"
+  - name: "user_c"
+    display_name: "Le Van C"
+    email: "c@company.com"
+    role: "user"
   - name: "admin"
     display_name: "Quan tri"
     email: "admin@company.com"
@@ -68,6 +72,18 @@ files:
     storage: "local"
     read: true
     write: true
+
+  # File Follow Up theo DUNG cau truc that (47 cot, cot NO la cong thuc, CONT TYPE merge)
+  - id: "F01-C"
+    role: "follow_up"
+    display_name: "Follow Up - Le Van C (cau truc that)"
+    path: "./sample_data/FollowUp_UserC_CauTrucThat.xlsx"
+    owner: "user_c"
+    storage: "local"
+    read: true
+    write: true
+    # Cot A (NO) la cong thuc, User to vang de danh dau -> Bot khong to de mau cot nay
+    color_skip_columns: ["A"]
 
   - id: "F02"
     role: "weekly_planning"
@@ -127,6 +143,8 @@ site_rules:
       site: "TDV"
     - when: { field: "Buyer", in: ["IKEA"] }
       site: "TDV"
+    - when: { field: "PIC", in: ["Le Van C", "user_c"] }
+      site: "TGV"
 
 # -----------------------------------------------------------------------------
 # SCHEDULER  (SRS muc 42-43)
@@ -202,7 +220,26 @@ status:
       label: "Cho khach xac nhan"
       notify: false
   # Bot co duoc phep to mau truc tiep len file Follow Up khong
+  # (ghi LOSSLESS: chi doi mau o, giu nguyen cong thuc / external link / defined name)
   write_color_to_excel: true
+  # Doc mau User to tay trong Excel -> coi nhu User chot trang thai (USER > BOT)
+  #   to DO  -> RED (hold) | to VANG -> YELLOW | to dung mau Bot -> tra lai cho Bot
+  #   mau la (khong co trong bang) -> Bot khong to de dong do
+  read_user_colors: true
+  # Khi nao coi la DA XUAT XONG (COMPLETED)
+  completed_rule:
+    enabled: true
+    require_container_seal: true   # hang FCL phai co CONT + SEAL
+    require_etd_passed: true       # ETD (ngay tau chay) da qua
+    group_partial: true            # nhom cung NO co dong da dong cont, co dong chua -> PARTIAL
+
+# -----------------------------------------------------------------------------
+# KHOA LO HANG
+# -----------------------------------------------------------------------------
+shipment:
+  # NO trong file that la CONG THUC tu INVOICE (chua co invoice -> NO trong).
+  # false = khoa chi gom JO + ExFtyDate -> lo khong bi tach doi khi invoice xuat hien.
+  key_includes_no: false
 
 # -----------------------------------------------------------------------------
 # GHI FILE EXCEL - AN TOAN DU LIEU  (SRS muc 37-41, 54)

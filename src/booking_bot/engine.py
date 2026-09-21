@@ -14,14 +14,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .audit import log_audit, raise_exception
 from .core import deadline as dl
 from .core import status as st
 from .core.buyer_rules import BuyerRegistry
-from .core.container import plan_containers
+from .core.container import ContainerSpec, merge_specs, parse_container_type, plan_containers
 from .core.normalize import clean_text, norm_key, to_canonical_date
 from .core.shipment import (
     ShipmentCandidate,
@@ -37,6 +37,7 @@ from .db.models import (
     ColumnMapping,
     ContainerAllocation,
     CustomsDeclaration,
+    ExceptionRecord,
     Invoice,
     PendingWrite,
     PlanningRecord,
@@ -83,6 +84,8 @@ class ScanResult:
     needs_confirmation: list[dict[str, Any]] = field(default_factory=list)
     merge_suggestions: list[dict[str, Any]] = field(default_factory=list)
     split_jo: list[dict[str, Any]] = field(default_factory=list)
+    formula_columns: list[dict[str, Any]] = field(default_factory=list)
+    container_checks: list[dict[str, Any]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
@@ -116,6 +119,8 @@ class ScanResult:
             "needs_confirmation": self.needs_confirmation,
             "merge_suggestions": self.merge_suggestions,
             "split_jo": self.split_jo,
+            "formula_columns": self.formula_columns,
+            "container_checks": self.container_checks,
             "errors": self.errors,
         }
 
@@ -156,7 +161,7 @@ class ScanResult:
         if self.merge_suggestions:
             lines += ["", f"Goi y gop lo: {len(self.merge_suggestions)}"]
         lines += ["", f"Thong bao: {self.events} su kien, gui {self.notifications_sent}",
-                  f"Exception: {self.exceptions}"]
+                  f"Exception dang mo: {self.exceptions}"]
         if self.errors:
             lines += ["", "Loi:"] + [f"  - {e}" for e in self.errors]
         lines.append("=" * 62)
@@ -223,6 +228,7 @@ class BookingBotEngine:
         dry_run = dry_run or self.settings.excel_write.dry_run_default
         res = ScanResult(dry_run=dry_run)
 
+        self._container_checks: list[dict[str, Any]] = []
         with session_scope() as s:
             run = ScanRun(mode="DRY_RUN" if dry_run else "SCAN")
             s.add(run)
@@ -232,12 +238,13 @@ class BookingBotEngine:
                 candidates = self._scan_follow_ups(s, res)
                 shipments = self._persist_shipments(s, candidates, res, today)
                 allocations = self._allocate_containers(s, shipments, candidates)
-                self._evaluate_status(s, shipments, res)
+                self._evaluate_status(s, shipments, candidates, res, today)
                 events = self._evaluate_deadlines(s, shipments, candidates, res, today)
                 self._dispatch(s, events, shipments, res, deliver_notifications)
                 self._write_outputs(s, shipments, allocations, res, dry_run, today)
                 self._write_colors(s, shipments, candidates, res, dry_run)
                 self._analyse_extras(candidates, res)
+                res.container_checks = list(self._container_checks)
                 run.ok = True
             except Exception as exc:  # noqa: BLE001
                 log.exception("Scan that bai")
@@ -245,6 +252,9 @@ class BookingBotEngine:
                 run.ok = False
                 run.error = str(exc)
 
+            res.exceptions = s.execute(
+                select(func.count()).select_from(ExceptionRecord).where(ExceptionRecord.status == "OPEN")
+            ).scalar_one()
             res.finished_at = dt.datetime.now()
             run.finished_at = utcnow()
             run.files_scanned = res.files_scanned
@@ -325,16 +335,35 @@ class BookingBotEngine:
 
             for sheet_res in wb_result.sheets:
                 res.sheets_scanned += 1
+                res.formula_columns.extend(
+                    {"file": fcfg.id, "sheet": sheet_res.detection.sheet_name, "field": fc.field,
+                     "column": fc.column, "formula": fc.pattern, "rows": fc.formula_rows}
+                    for fc in sheet_res.formula_columns
+                )
+                for issue in sheet_res.sheet_issues:
+                    raise_exception(
+                        s, issue["code"], issue["reason"], severity=issue["severity"],
+                        source_file=str(path), source_sheet=sheet_res.detection.sheet_name,
+                        suggested_action="Mo file bang Excel, bam Save roi cho lan quet sau",
+                        dedup_key=f"{issue['code']}:STALE:{fcfg.id}:{sheet_res.detection.sheet_name}",
+                    )
+                    res.exceptions += 1
                 for row in sheet_res.rows:
                     rows.append(row)
                     for issue in row.issues:
-                        code = {"ExFtyDate": "EX001", "FinalCBM": "EX004"}.get(issue["field"], "EX011")
+                        code = issue.get("code") or {"ExFtyDate": "EX001", "FinalCBM": "EX004"}.get(
+                            issue["field"], "EX011")
+                        action = (
+                            f"Keo lai cong thuc {issue.get('expected', '')} cho o {issue['column']}{row.row_index}"
+                            if code == "EX013"
+                            else "Sua truc tiep trong file Follow Up roi cho lan scan sau"
+                        )
                         raise_exception(
                             s, code, f"{issue['field']}: {issue['reason']}",
                             severity="CRITICAL" if issue["severity"] == "INVALID" else "WARNING",
                             source_file=str(path), source_sheet=row.sheet, source_row=row.row_index,
                             source_column=issue["column"], value=issue["raw"],
-                            suggested_action="Sua truc tiep trong file Follow Up roi cho lan scan sau",
+                            suggested_action=action,
                             dedup_key=f"{code}:{fcfg.id}:{row.sheet}:{row.row_index}:{issue['field']}",
                         )
                         res.exceptions += 1
@@ -355,7 +384,9 @@ class BookingBotEngine:
                         res.exceptions += 1
 
         res.rows_read = len(rows)
-        candidates, duplicates = build_candidates(rows, self.buyers.resolve)
+        candidates, duplicates = build_candidates(
+            rows, self.buyers.resolve, include_no=self.settings.shipment.key_includes_no
+        )
         for dup in duplicates:
             raise_exception(
                 s, dup["code"], dup["reason"], severity=dup["severity"],
@@ -494,8 +525,34 @@ class BookingBotEngine:
             sh.cancel_flag = bool(v.get("CancelFlag"))
             sh.shipped_flag = bool(v.get("ShippedFlag"))
             sh.shipped_qty = v.get("ShippedQty")
-            sh.co_required = rule.co_required
-            sh.co_form = rule.co_form
+            # Cot bo sung cua file that
+            sh.go = clean_text(v.get("GO"))
+            sh.po = clean_text(v.get("PO"))
+            sh.style = clean_text(v.get("Style"))
+            sh.booking_no = clean_text(v.get("BookingNo"))
+            sh.booking_date = v.get("BookingDate")
+            sh.etd = v.get("ETD")
+            sh.eta = v.get("ETA")
+            sh.vessel = clean_text(v.get("Vessel"))
+            sh.port = clean_text(v.get("Port"))
+            sh.closing_time = clean_text(v.get("ClosingTime"))
+            sh.container_type_user = clean_text(v.get("ContainerType"))
+            sh.container_no = clean_text(v.get("ContainerNo"))
+            sh.seal_no = clean_text(v.get("SealNo"))
+            sh.co_no = clean_text(v.get("CoNo"))
+            sh.term = clean_text(v.get("Term"))
+            sh.currency = clean_text(v.get("Currency"))
+            sh.cdf_amount = v.get("CdfAmount")
+            sh.tsn_amount = v.get("TsnAmount")
+            sh.derived_notes = {**cand.row.derived, **(
+                {"merged": cand.row.merged_from} if cand.row.merged_from else {})}
+            if sh.booking_no:
+                sh.booking_flag = True
+
+            # CO: file that co CO NO / CO FORM thuc te -> uu tien hon Buyer Rule
+            co_form_file = clean_text(v.get("CoForm"))
+            sh.co_required = rule.co_required or bool(sh.co_no or co_form_file)
+            sh.co_form = co_form_file or rule.co_form
             sh.data_hash = cand.row.data_hash
             sh.source_version = cand.row.source_version
             sh.data_confidence = cand.row.confidence
@@ -553,8 +610,9 @@ class BookingBotEngine:
         ).scalars().first()
         if sh is None:
             return None
-        if norm_key(sh.shipment_no) != norm_key(row.values.get("ShipmentNo")):
-            return None
+        old_no, new_no = norm_key(sh.shipment_no), norm_key(row.values.get("ShipmentNo"))
+        if old_no and new_no and old_no != new_no:
+            return None  # NO doi han sang so khac -> khong phai cung lo
         if norm_key(sh.jo) != norm_key(row.values.get("JO")):
             return None
         if sh.exfty_date == row.values.get("ExFtyDate"):
@@ -617,6 +675,7 @@ class BookingBotEngine:
                 air_type=ccfg.air_type, lcl_type=ccfg.lcl_type,
                 forced_type=rule.forced_type, needs_user_review=rule.needs_user_review,
             )
+            bot_label = plan.container_type
 
             alloc = s.execute(
                 select(ContainerAllocation).where(ContainerAllocation.group_key == gkey)
@@ -626,64 +685,167 @@ class BookingBotEngine:
                 s.add(alloc)
 
             if alloc.allocation_source == "USER":
-                # USER > BOT: khong ghi de phuong an User da chot (SRS muc 35)
+                # USER > BOT: khong ghi de phuong an User da chot tren Dashboard (SRS muc 35)
                 alloc.total_cbm = plan.total_cbm
                 result[gkey] = alloc
                 continue
 
+            # CONT TYPE User da go trong Excel (o merge tinh 1 lan cho ca nhom)
+            user_spec = self._user_container_spec(cands)
+            if user_spec is not None:
+                self._apply_user_container(s, alloc, plan, user_spec, ships, gkey, bot_label)
+            else:
+                alloc.qty_40hc = plan.qty_40hc
+                alloc.qty_40dc = plan.qty_40dc
+                alloc.qty_20st = plan.qty_20st
+                alloc.estimated_capacity = plan.estimated_capacity
+                alloc.excess_capacity = plan.excess_capacity
+                alloc.booking_mode = plan.booking_mode
+                alloc.container_type = plan.container_type
+                alloc.allocation_status = plan.allocation_status
+                alloc.allocation_source = plan.allocation_source
+                alloc.note = plan.note
+                if plan.allocation_status == "NEED_REVIEW":
+                    raise_exception(
+                        s, "EX009", plan.note or "Bot khong tu quyet dinh duoc container",
+                        source_file=self._src_path(ships[0].source_file_code), source_sheet=ships[0].source_sheet,
+                        source_row=ships[0].source_row, value=f"CBM={plan.total_cbm}",
+                        suggested_action="Dashboard > Shipments > chon container thu cong",
+                        shipment_code=ships[0].shipment_code, dedup_key=f"EX009:{gkey}",
+                    )
+
             alloc.total_cbm = plan.total_cbm
-            alloc.qty_40hc = plan.qty_40hc
-            alloc.qty_40dc = plan.qty_40dc
-            alloc.qty_20st = plan.qty_20st
-            alloc.estimated_capacity = plan.estimated_capacity
-            alloc.excess_capacity = plan.excess_capacity
-            alloc.booking_mode = plan.booking_mode
-            alloc.container_type = plan.container_type
-            alloc.allocation_status = plan.allocation_status
-            alloc.allocation_source = plan.allocation_source
-            alloc.note = plan.note
             alloc.shipment_id = ships[0].id
-
             for sh in ships:
-                sh.booking_mode = plan.booking_mode
-
-            if plan.allocation_status == "NEED_REVIEW":
-                raise_exception(
-                    s, "EX009", plan.note or "Bot khong tu quyet dinh duoc container",
-                    source_file=ships[0].source_file_code, source_sheet=ships[0].source_sheet,
-                    source_row=ships[0].source_row, value=f"CBM={plan.total_cbm}",
-                    suggested_action="Dashboard > Shipments > chon container thu cong",
-                    shipment_code=ships[0].shipment_code, dedup_key=f"EX009:{gkey}",
-                )
+                sh.booking_mode = alloc.booking_mode
             result[gkey] = alloc
 
         s.flush()
         return result
 
+    def _src_path(self, file_code: str) -> str:
+        fcfg = self.settings.file_by_code(file_code)
+        return str(self.settings.resolve_path(fcfg.path)) if fcfg else file_code
+
+    @staticmethod
+    def _user_container_spec(cands: list[ShipmentCandidate]) -> ContainerSpec | None:
+        """Gom cac o CONT TYPE cua nhom. O merge (D2:D5) chi tinh 1 lan."""
+        seen: dict[str, str] = {}
+        for c in cands:
+            raw = clean_text(c.row.values.get("ContainerType"))
+            if raw:
+                seen.setdefault(c.row.origin("ContainerType"), raw)
+        if not seen:
+            return None
+        return merge_specs([parse_container_type(v) for v in seen.values()])
+
+    def _apply_user_container(
+        self, s: Session, alloc: ContainerAllocation, plan, spec: ContainerSpec,
+        ships: list[Shipment], gkey: str, bot_label: str,
+    ) -> None:
+        ccfg = self.settings.container
+        first = ships[0]
+        alloc.allocation_source = "USER_EXCEL"
+        if not spec.valid:
+            alloc.allocation_status = "NEED_REVIEW"
+            alloc.container_type = spec.raw
+            alloc.note = f"Khong doc duoc CONT TYPE '{spec.raw}': {spec.reason}. Bot de xuat: {bot_label}"
+            raise_exception(
+                s, "EX014", alloc.note, source_file=self._src_path(first.source_file_code),
+                source_sheet=first.source_sheet, source_row=first.source_row, source_column="CONT TYPE",
+                value=spec.raw, shipment_code=first.shipment_code,
+                suggested_action="Ghi theo dang 1x20 / 1x40 / 2x40HC / LCL",
+                dedup_key=f"EX014:PARSE:{gkey}",
+            )
+            return
+
+        alloc.qty_40hc = spec.quantities.get("40HC", 0)
+        alloc.qty_40dc = spec.quantities.get("40DC", 0)
+        alloc.qty_20st = spec.quantities.get("20ST", 0)
+        alloc.booking_mode = spec.mode or plan.booking_mode
+        alloc.container_type = spec.label
+        cap = spec.capacity(ccfg.capacity)
+        alloc.estimated_capacity = round(cap, 3)
+        alloc.excess_capacity = round(cap - plan.total_cbm, 3)
+        check = {
+            "group": gkey, "no": first.shipment_no, "jos": [x.jo for x in ships],
+            "user": spec.label, "bot": bot_label, "cbm": plan.total_cbm, "capacity": cap,
+        }
+
+        if spec.mode == "FCL" and cap + 1e-9 < plan.total_cbm:
+            alloc.allocation_status = "NEED_REVIEW"
+            alloc.note = (f"CONT TYPE {spec.label} chi chua {cap:g} CBM, nhom co {plan.total_cbm:g} CBM "
+                          f"-> THIEU {plan.total_cbm - cap:g} CBM. Bot de xuat: {bot_label}")
+            check["result"] = "THIEU CHO"
+            raise_exception(
+                s, "EX014", alloc.note, severity="CRITICAL",
+                source_file=self._src_path(first.source_file_code),
+                source_sheet=first.source_sheet, source_row=first.source_row, source_column="CONT TYPE",
+                value=spec.raw, shipment_code=first.shipment_code,
+                suggested_action="Book them cont hoac tach lo", dedup_key=f"EX014:SHORT:{gkey}",
+            )
+        else:
+            alloc.allocation_status = "USER_CONFIRMED"
+            same = spec.label == bot_label
+            alloc.note = (f"User book {spec.label} (du {alloc.excess_capacity:g} CBM)"
+                          + ("" if same else f" | Bot de xuat {bot_label}"))
+            check["result"] = "KHOP" if same else "DU CHO"
+        self._container_checks.append(check)
+
     # -- buoc 4: status -------------------------------------------------
 
-    def _evaluate_status(self, s: Session, shipments: dict[str, Shipment], res: ScanResult) -> None:
+    def _evaluate_status(
+        self, s: Session, shipments: dict[str, Shipment], candidates: list[ShipmentCandidate],
+        res: ScanResult, today: dt.date,
+    ) -> None:
         blanks = self.dictionary.blanks or None
         overrides = self._load_overrides(s)
+        rule = self.settings.status.completed_rule
+        completion = rule.model_dump()
+        by_key = {c.key: c for c in candidates}
 
-        statuses = []
+        # 1. Trang thai Bot tung dong
+        results: dict[str, st.StatusResult] = {}
         for sh in shipments.values():
+            cand = by_key.get(sh.shipment_key)
+            has = cand.row.values if cand else {}
             values = {
                 "HoldFlag": sh.hold_flag, "HoldReason": sh.hold_reason,
                 "HoldReasonDetail": sh.hold_reason_detail, "CancelFlag": sh.cancel_flag,
                 "ShippedFlag": sh.shipped_flag, "ShippedQty": sh.shipped_qty,
                 "FinalExportQty": sh.final_export_qty, "BookingFlag": sh.booking_flag,
-                "CDF": sh.cdf, "BL": sh.bl,
+                "BookingNo": sh.booking_no, "CDF": sh.cdf, "BL": sh.bl,
+                "_booking_mode": sh.booking_mode,
             }
-            result = st.evaluate(values, blanks=blanks)
-            old_effective = sh.effective_status
+            # Chi xet "da xuat xong" khi file co cot tuong ung (CONT/SEAL/ETD)
+            for fld, attr in (("ContainerNo", "container_no"), ("SealNo", "seal_no"), ("ETD", "etd")):
+                if fld in has:
+                    values[fld] = getattr(sh, attr)
+            use_completion = rule.enabled and ("ETD" in has or "ContainerNo" in has)
+            results[sh.shipment_code] = st.evaluate(
+                values, blanks=blanks, today=today,
+                completion=completion if use_completion else {"enabled": False},
+            )
 
+        # 2. Nhom cung NO dong cont do dang -> PARTIAL ("xuat toi nay 1 nua, mai dong tiep")
+        if rule.group_partial:
+            self._apply_group_partial(shipments, results)
+
+        # 3. User override (Dashboard + mau User to tay trong Excel) -> trang thai hien thi
+        statuses = []
+        for sh in shipments.values():
+            result = results[sh.shipment_code]
+            old_effective = sh.effective_status
             if sh.bot_status and sh.bot_status != result.status:
                 log_audit(s, "STATUS_CHANGED", entity="shipment", entity_id=sh.shipment_code,
                           field="bot_status", old_value=sh.bot_status, new_value=result.status,
                           note=result.reason)
             sh.bot_status = result.status
             sh.status_reason = result.as_dict()
+
+            cand = by_key.get(sh.shipment_key)
+            if cand is not None and self.settings.status.read_user_colors:
+                self._sync_color_override(s, sh, cand, result.status, overrides)
 
             ov = overrides.get(sh.shipment_code, {}).get("status")
             effective, source = st.effective_status(result.status, ov)
@@ -698,6 +860,87 @@ class BookingBotEngine:
             statuses.append(effective)
 
         res.status_counts = st.status_counts(statuses)
+
+    @staticmethod
+    def _apply_group_partial(shipments: dict[str, Shipment], results: dict[str, st.StatusResult]) -> None:
+        groups: dict[str, list[Shipment]] = {}
+        for sh in shipments.values():
+            if (sh.booking_mode or "").upper() in ("AIR", "LCL", "EXPRESS"):
+                continue
+            groups.setdefault(sh.group_key, []).append(sh)
+        for ships in groups.values():
+            if len(ships) < 2:
+                continue
+            loaded = [x for x in ships if x.container_no and x.seal_no]
+            if not 0 < len(loaded) < len(ships):
+                continue
+            no = ships[0].shipment_no or ships[0].booking_no or "?"
+            reason = f"NO {no}: moi dong cont xong {len(loaded)}/{len(ships)} dong - con lai dong tiep"
+            for x in ships:
+                r = results[x.shipment_code]
+                if r.status in ("GREEN", "YELLOW", "COMPLETED"):
+                    r.trace.append({"check": "NHOM CONT", "value": f"{len(loaded)}/{len(ships)}", "note": reason})
+                    r.status, r.reason = "PARTIAL", reason
+
+    def _sync_color_override(
+        self, s: Session, sh: Shipment, cand: ShipmentCandidate, bot_status: str,
+        overrides: dict[str, dict[str, str]],
+    ) -> None:
+        """Doc mau User to tay trong Excel -> USER override (USER > BOT).
+
+        F = mau hien tai, B = mau Bot to lan cuoi, U = mau User da to (dang co hieu luc)
+          F == U            -> giu nguyen override
+          F rong / F == B   -> User khong can thiep (neu truoc do co U thi bo override)
+          F moi, la mau cua trang thai Bot dang tinh -> User dong y voi Bot -> bo override
+          F moi, la mau trang thai khac -> override = trang thai do
+          F moi, mau la     -> dong thuoc ve User, Bot khong to de (khong doi trang thai)
+        """
+        F = _rgb(cand.row.fill_color)
+        B, U = _rgb(sh.last_bot_color), _rgb(sh.user_color)
+        if U and F == U:
+            return
+        if not F or F == B:
+            if U:
+                self._set_color_override(s, sh, "", overrides, note="User bo mau tay")
+                sh.user_color = ""
+            return
+
+        status = self.settings.status.status_of_color(F)
+        if status == bot_status or not status:
+            self._set_color_override(s, sh, "", overrides, note="User to dung mau cua Bot")
+            sh.user_color = "" if status else F
+            if not status:
+                log_audit(s, "USER_COLOR_CUSTOM", actor_type="USER", actor_name=f"excel:{sh.owner_user}",
+                          entity="shipment", entity_id=sh.shipment_code, new_value=F,
+                          note="Mau khong thuoc bang trang thai - Bot khong to de dong nay")
+            return
+
+        sh.user_color = F
+        self._set_color_override(s, sh, status, overrides, note=f"User to mau {F} trong Excel")
+
+    def _set_color_override(
+        self, s: Session, sh: Shipment, status: str, overrides: dict[str, dict[str, str]], note: str
+    ) -> None:
+        current = s.execute(
+            select(UserOverride).where(
+                UserOverride.shipment_code == sh.shipment_code, UserOverride.field == "status",
+                UserOverride.active.is_(True), UserOverride.user_name.like("excel:%"),
+            )
+        ).scalars().all()
+        if status and any(o.user_value == status for o in current):
+            return
+        for o in current:
+            o.active = False
+            overrides.get(sh.shipment_code, {}).pop("status", None)
+        if not status and not current:
+            return
+        if status:
+            s.add(UserOverride(shipment_code=sh.shipment_code, field="status", user_value=status,
+                               user_name=f"excel:{sh.owner_user}", note=note))
+            overrides.setdefault(sh.shipment_code, {})["status"] = status
+        log_audit(s, "USER_COLOR_OVERRIDE", actor_type="USER", actor_name=f"excel:{sh.owner_user}",
+                  entity="shipment", entity_id=sh.shipment_code, field="status",
+                  old_value=",".join(o.user_value for o in current), new_value=status or "(bo)", note=note)
 
     def _load_overrides(self, s: Session) -> dict[str, dict[str, str]]:
         out: dict[str, dict[str, str]] = {}
@@ -810,6 +1053,8 @@ class BookingBotEngine:
                     due = dl.due_milestones(sh.exfty_date, self.settings.deadlines, today)
                     if spec.milestone not in due:
                         continue
+                    if sh.exfty_date and sh.exfty_date < today and not self._has_planning(s, role, sh):
+                        continue  # lo da xuat roi: khong chen dong lich su, chi cap nhat dong da co
                     alloc_row = allocations.get(sh.group_key)
                     alloc = AllocationLike(
                         container_type=alloc_row.container_type if alloc_row else "",
@@ -847,6 +1092,14 @@ class BookingBotEngine:
                     )
                     res.write_reports.append(report)
                     self._post_write(s, fcfg, report, records, spec, sheet_name, dry_run, res)
+
+    @staticmethod
+    def _has_planning(s: Session, role: str, sh: Shipment) -> bool:
+        return s.execute(
+            select(PlanningRecord.id).where(
+                PlanningRecord.target_role == role, PlanningRecord.shipment_code == sh.shipment_code
+            ).limit(1)
+        ).first() is not None
 
     def _post_write(
         self, s: Session, fcfg, report: WriteReport, records: list[dict[str, Any]],
@@ -922,35 +1175,42 @@ class BookingBotEngine:
         self, s: Session, shipments: dict[str, Shipment], candidates: list[ShipmentCandidate],
         res: ScanResult, dry_run: bool,
     ) -> None:
+        """To mau dong theo trang thai - LOSSLESS (xem excel/xlsx_patch.py)."""
         if not self.settings.status.write_color_to_excel:
             return
 
         by_key = {c.key: c for c in candidates}
-        ops_by_file: dict[str, list[ColorOp]] = {}
+        ops_by_file: dict[str, list[tuple[ColorOp, Shipment]]] = {}
         for sh in shipments.values():
             cand = by_key.get(sh.shipment_key)
             if cand is None:
                 continue
-            color = self.settings.status_color(sh.effective_status)
-            current = (cand.row.fill_color or "").upper()
-            if current and current.lstrip("0") == color.upper().lstrip("0"):
+            current = _rgb(cand.row.fill_color)
+            if sh.user_color and current == _rgb(sh.user_color):
+                continue  # dong nay User dang to tay -> USER > BOT, khong to de
+            color = _rgb(self.settings.status_color(sh.effective_status))
+            if current == color:
+                if not dry_run:
+                    sh.last_bot_color = color
                 continue
-            ops_by_file.setdefault(sh.source_file_code, []).append(
+            ops_by_file.setdefault(sh.source_file_code, []).append((
                 ColorOp(sheet=sh.source_sheet, row=sh.source_row, color=color,
                         status=sh.effective_status, shipment_code=sh.shipment_code,
-                        previous=current)
-            )
+                        previous=current, last_col=cand.row.last_col),
+                sh,
+            ))
 
         ecfg = self.settings.excel_write
-        for file_code, ops in ops_by_file.items():
+        for file_code, pairs in ops_by_file.items():
             fcfg = self.settings.file_by_code(file_code)
             if fcfg is None or not fcfg.write:
                 continue
+            ops = [op for op, _ in pairs]
             path = self.settings.resolve_path(fcfg.path)
             writer = FollowUpColorWriter(
                 path, file_code, backup_dir=self.settings.backup_dir,
                 lock_retry=ecfg.lock_retry_seconds, backup=ecfg.backup_before_write,
-                backup_keep=ecfg.backup_keep_versions,
+                backup_keep=ecfg.backup_keep_versions, skip_columns=fcfg.color_skip_columns,
             )
             report = writer.apply(ops, dry_run=dry_run, note="Bot to mau trang thai")
             res.write_reports.append(report)
@@ -963,6 +1223,17 @@ class BookingBotEngine:
                     dedup_key=f"EX006:COLOR:{file_code}",
                 )
                 res.exceptions += 1
+                continue
+            if not dry_run:
+                for op, sh in pairs:
+                    sh.last_bot_color = op.color
+                src = s.execute(select(SourceFile).where(SourceFile.code == file_code)).scalar_one_or_none()
+                if src is not None and path.exists():
+                    src.last_version_token = snapshot(path, with_hash=False).version_token
+                if report.changed_parts:
+                    log_audit(s, "WRITE_COLORS", entity="file", entity_id=file_code,
+                              new_value=f"{report.applied} dong",
+                              note="lossless: chi doi " + ", ".join(report.changed_parts))
 
     # -- buoc 9: phan tich bo sung --------------------------------------
 
@@ -1008,6 +1279,13 @@ class BookingBotEngine:
                     log_audit(s, "PENDING_FLUSHED", entity="file", entity_id=fcfg.id,
                               new_value=f"+{report.inserted} ~{report.updated}")
         return done
+
+
+def _rgb(value: str | None) -> str:
+    v = (value or "").strip().upper()
+    if len(v) == 6:
+        v = "FF" + v
+    return v if len(v) == 8 and v not in ("00000000",) else ""
 
 
 def _jsonable(d: dict[str, Any]) -> dict[str, Any]:

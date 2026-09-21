@@ -102,6 +102,12 @@ class FieldDictionary:
         self.day_first: bool = bool(dp.get("day_first", True))
         self.date_formats: list[str] = list(dp.get("formats") or [])
 
+        self.derived_fields: dict[str, dict[str, Any]] = dict(self.raw.get("derived_fields") or {})
+        rk = self.raw.get("remark_keywords") or {}
+        self.hold_keywords: list[str] = list(rk.get("hold") or [])
+        self.cancel_keywords: list[str] = list(rk.get("cancel") or [])
+        self.hold_negations: list[str] = list(rk.get("hold_negations") or [])
+
         sd = self.raw.get("sheet_detection") or {}
         self.sheet_required_any: list[str] = list(sd.get("required_any") or [])
         self.sheet_min_hits: int = int(sd.get("min_required_hits", 3))

@@ -296,3 +296,54 @@ def parse_by_type(value: Any, data_type: str, ctx: dict[str, Any] | None = None)
     if is_blank(value, ctx.get("blanks")):
         return ParseResult("", "BLANK", "o trong")
     return ParseResult(clean_text(value))
+
+
+# ---------------------------------------------------------------------------
+# Truong suy ra tu cong thuc Excel (derived_fields trong field_mapping.yaml)
+# ---------------------------------------------------------------------------
+
+
+def derive_invoice_suffix(
+    invoice: Any, prefix: str = "TEGV", last_digits: int = 5, offset: int = -2108
+) -> ParseResult:
+    """Tai tao dung cong thuc =IF(LEFT(INV,4)="TEGV",RIGHT(INV,5)-2108,"").
+
+    - Invoice khong bat dau bang prefix -> "" (giong Excel tra chuoi rong)
+    - Phan duoi khong phai so        -> INVALID (Excel se ra #VALUE!)
+    """
+    s = clean_text(invoice)
+    if not s:
+        return ParseResult("", "BLANK", "chua co invoice")
+    if not s.upper().startswith(prefix.upper()):
+        return ParseResult("", "BLANK", f"invoice khong bat dau bang {prefix}")
+    tail = s[-last_digits:]
+    if not tail.isdigit():
+        return ParseResult(None, "INVALID", f"{last_digits} ky tu cuoi cua '{s}' khong phai so (#VALUE!)")
+    return ParseResult(str(int(tail) + offset))
+
+
+def apply_derived_rule(rule: dict[str, Any], source_value: Any) -> ParseResult:
+    kind = (rule or {}).get("rule", "")
+    if kind == "invoice_suffix":
+        return derive_invoice_suffix(
+            source_value,
+            prefix=str(rule.get("prefix", "")),
+            last_digits=int(rule.get("last_digits", 5)),
+            offset=int(rule.get("offset", 0)),
+        )
+    return ParseResult(None, "NEED_REVIEW", f"rule '{kind}' chua duoc ho tro")
+
+
+def find_keyword(text: Any, keywords: list[str], negations: list[str] | None = None) -> str:
+    """Tra ve tu khoa tim thay trong text (bo dau, khong phan biet hoa thuong)."""
+    s = f" {strip_accents(clean_text(text)).upper()} "
+    if not s.strip():
+        return ""
+    for neg in negations or []:
+        if strip_accents(neg).upper() in s:
+            return ""
+    for kw in keywords:
+        k = strip_accents(kw).upper()
+        if re.search(rf"(?<![A-Z]){re.escape(k)}(?![A-Z])", s):
+            return kw
+    return ""

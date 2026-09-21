@@ -4,6 +4,72 @@ Tài liệu trả lời chính xác: *Bot lấy dữ liệu ở đâu → hiểu
 
 ---
 
+## 0. Cấu trúc file Follow Up thật
+
+Bảng này lập từ file Follow Up đang dùng thực tế (1 sheet, 47 cột, header ở dòng 1). Bot map được **46/47 cột với độ tin cậy 100%** — chỉ cột `SQ` chưa rõ nghĩa nên để trống.
+
+| Cột | Header | Canonical field | Ghi chú |
+|---|---|---|---|
+| A | NO | `ShipmentNo` | **Công thức** `=IF(LEFT(M2,4)="TEGV",RIGHT(M2,5)-2108,"")` — tô vàng |
+| B | EX-FACT DATE | `ExFtyDate` | gốc tính mọi deadline |
+| C | BUYER | `Buyer` | tên sheet ≠ buyer, Bot đọc từ cột này |
+| D | CONT TYPE | `ContainerType` | **ô merge** cho cả nhóm cùng NO (`D2:D5`) — lựa chọn của User |
+| E | MODE | `ShipMode` | `S` → SEA, `A` → AIR |
+| F | DEST | `Destination` | |
+| G | JO | `JO` | tách bằng hậu tố `…KR01` / `…KR02` |
+| H | GO | `GO` | Garment Order — **không phải** HS code |
+| I · J · K | PO · STYLE · Description | `PO` · `Style` · `Description` | |
+| L | ORDER QTY | `OrderQty` | |
+| M | INVOICE | `Invoice` | nguồn của công thức NO |
+| N | FinaL Qty | `FinalExportQty` | |
+| O | CTNS | `FinalCartonQty` | |
+| P | G.W | `GrossWeight` | |
+| Q | CBM | `FinalCBM` | đầu vào Container Engine |
+| R · S | ETD · ETA | `ETD` · `ETA` | ETD đã qua là 1 điều kiện COMPLETED |
+| T · U | Color code · Cust Color | `ColorCode` · `CustColor` | |
+| V | BOOKING NO | `BookingNo` | có số = **đã book** |
+| W | 100% FOB | `Price` | |
+| X | 95% FOB | `DiscountPrice` | **Công thức** `=ROUND(W2*0.95,2)` |
+| Y | CDF AMOUNT | `CdfAmount` | **Công thức** `=X2*N2` |
+| Z | TSN AMOUNT | `TsnAmount` | **Công thức** `=W2*N2` |
+| AA | CURRENCY | `Currency` | |
+| AB | HS CODE | `CustomsCode` | ghi sang file Custom Code |
+| AC | CDF# | `CDF` | có số → điều kiện GREEN |
+| AD | BL# | `BL` | có số → điều kiện GREEN |
+| AE · AF · AG | VESSEL · E-SHIPMENT · TERM | `Vessel` · `EShipment` · `Term` | |
+| AH · AI · AJ | VAT INV · VAT DATE · VAT AMOUNT | `VatInvoice` · `VatDate` · `VatAmount` | |
+| AK | SQ | — | chưa rõ nghĩa, bỏ qua |
+| AL | Booking date | `BookingDate` | |
+| AM | Cargos closing time | `ClosingTime` | giữ nguyên văn bản (`17H SEP-05`) |
+| AN | PORT/WH | `Port` | |
+| AO · AP | CO NO · CO FORM | `CoNo` · `CoForm` | CO FORM thật (`VK`) **ưu tiên hơn** Buyer Rule |
+| AQ · AR | T/C CO · CO granted date | `CoCheck` · `CoGrantedDate` | |
+| AS · AT | CONT · SEAL | `ContainerNo` · `SealNo` | có cả hai = đã đóng hàng xong |
+| AU | REMARK | `Remark` | đọc từ khóa HOLD / CANCEL |
+
+### Những điều file thật buộc phải xử lý
+
+**1. NO là công thức, không phải dữ liệu gõ tay.** Trước khi có invoice, NO trống. Vì vậy NO **không** nằm trong Shipment Key (xem mục 5). Công thức được tái tạo trong `field_mapping.yaml → derived_fields` để:
+- Tự tính lại NO khi giá trị tính sẵn bị mất (file vừa bị công cụ khác lưu)
+- Phát hiện NO bị gõ đè bằng số khác → `EX013`
+
+**2. Cột công thức phải còn nguyên.** Bot tự nhận ra cột nào là cột công thức (≥ 2 dòng và chiếm đa số) rồi kiểm từng dòng:
+
+| Phát hiện | Ví dụ | Mã |
+|---|---|---|
+| Ô bị gõ đè giá trị cố định | A13 = `999` thay vì công thức | `EX013` |
+| Dòng mới quên kéo công thức | A14 trống, M14 có invoice | `EX013` + Bot tự tính NO = 903 |
+| Công thức khác các dòng còn lại | `=X2*N3` lệch dòng | `EX013` |
+| Toàn bộ công thức mất giá trị tính sẵn | file lưu bởi phần mềm khác Excel | `EX013` cấp sheet |
+
+**3. Ô merge dùng chung cho nhóm.** `CONT TYPE = 1x20` ở `D2:D5` là **một** container cho cả 4 JO, không phải 4 container. Reader gắn "origin" `D2:D5` cho cả 4 dòng; Container Engine đếm mỗi origin một lần.
+
+**4. Không có cột HOLD / CANCEL.** Bot đọc từ khóa trong REMARK (`field_mapping.yaml → remark_keywords`), và đọc **màu bạn tô tay** (xem mục 10).
+
+**5. File có 33 external link, 1495 defined name, comment, thiết lập in.** openpyxl lưu lại sẽ làm mất giá trị công thức cột NO, 2 defined name, thiết lập in. Bot vì vậy ghi **lossless** — xem [ARCHITECTURE.md § Ghi lossless](ARCHITECTURE.md#57-ghi-excel-lossless).
+
+---
+
 ## 1. File Registry
 
 | ID | File | Vai trò | Nguồn/Đích | Chủ | Mốc |
@@ -78,12 +144,15 @@ Follow Up A          Follow Up B          Follow Up C
 
 | Canonical Field | Kiểu | Bắt buộc | Alias tiêu biểu |
 |---|---|---|---|
-| `ShipmentNo` | string | ✓ | No, NO., STT, Số NO, NO Folder, Folder No |
+| `ShipmentNo` | string | | NO (công thức từ INVOICE), No., STT, Số NO, NO Folder |
 | `ExFtyDate` | date | ✓ | ExFtyDate, EX FTY DATE, Export Factory Date, Ngày xuất |
 | `Buyer` | string | ✓ | BUYER, Customer Name, Khách hàng, Consignee |
 | `JO` | string | ✓ | JO, JO No, Job Order, Số JO |
 | `CustomsCode` | string | | Customs Code(GO), HS Code, Mã HS |
-| `ShipMode` | string | | Ship, Ship Mode, Mode, By, MODE |
+| `ShipMode` | string | | MODE, Ship, Ship Mode, By — giá trị `S`/`A` → SEA/AIR |
+| `ContainerType` | string | | CONT TYPE, Container Type — lựa chọn cont của User |
+| `ContainerNo` · `SealNo` | string | | CONT, SEAL — có cả hai = đã đóng hàng |
+| `ETD` · `ETA` | date | | ETD, ETA |
 | `Destination` | string | | Destination, POD, Port of Discharge, Cảng đến |
 | `OrderQty` | decimal | | OrderQty, Order Qty, SL đặt |
 | `Invoice` | string | | EELInvoice, INV, Invoice No, Số Invoice |
@@ -95,7 +164,8 @@ Follow Up A          Follow Up B          Follow Up C
 | `BL` | string | | BL, B/L, AWB, MBL, HBL, Vận đơn |
 | `Price` | decimal | | Price, Unit Price, Giá, FOB Price |
 | `DiscountPrice` | decimal | | Discount Price, Net Price, Giá sau CK |
-| `BookingFlag` | flag | | Booking, Booked, BKG, Booking No, Đã book |
+| `BookingNo` | string | | BOOKING NO, BKG No, Số booking — có giá trị = đã book |
+| `BookingFlag` | flag | | Booking, Booked, BKG, Đã book |
 | `HoldFlag` | flag | | Hold, On Hold, Tạm dừng, Giữ hàng |
 | `HoldReason` | string | | Hold Reason, Lý do, Lý do hold |
 | `CancelFlag` | flag | | Cancel, Cancelled, Hủy |
@@ -183,14 +253,18 @@ Tách bằng `,` `;` `/` `|` hoặc xuống dòng. Lưu vào bảng `invoices` (
 ### Khóa
 
 ```
-ShipmentKey = sha256(owner | ShipmentNo | JO | ExFtyDate)
+ShipmentKey = sha256(owner | JO | ExFtyDate)
 ```
+
+**NO không nằm trong khóa** — quyết định sau khi xem file thật: NO là công thức tính từ INVOICE, nên trống cho tới khi xuất invoice. Nếu NO nằm trong khóa, lúc invoice xuất hiện lô hàng sẽ bị coi là lô mới và mất lịch sử. Muốn dùng lại khóa cũ: `config.yaml → shipment.key_includes_no: true`.
 
 | Tình huống | Kết quả |
 |---|---|
-| Cùng NO + JO, **khác** ExFtyDate | **2 shipment** (JO tách 2 đợt xuất) |
-| Cùng NO + JO + ExFtyDate + Invoice | **Nghi duplicate** → `EX003` CRITICAL |
-| Cùng NO + JO + ExFtyDate, khác Invoice | → `EX003` WARNING, chờ User xác nhận |
+| Cùng JO, **khác** ExFtyDate | **2 shipment** (JO tách 2 đợt xuất) |
+| JO tách hậu tố KR01 / KR02, cùng invoice | 2 shipment, **1 nhóm container** (cùng NO) |
+| Cùng JO + ExFtyDate + Invoice | **Nghi duplicate** → `EX003` CRITICAL |
+| Cùng JO + ExFtyDate, khác Invoice | → `EX003` WARNING, chờ User xác nhận |
+| Invoice xuất hiện sau (NO từ trống → có số) | **Vẫn là lô cũ**, chỉ cập nhật NO |
 | Cùng dòng Excel, chỉ ExFtyDate đổi | **Cùng 1 shipment bị dời lịch** → đổi khóa, tính lại deadline |
 
 Mã hiển thị: `SHP-20260912-0001`
@@ -201,8 +275,11 @@ Mã hiển thị: `SHP-20260912-0001`
 |---|---|---|
 | `by_no_exfty` (mặc định) | Buyer + NO + ExFtyDate | Thông thường |
 | `by_no` | Buyer + NO | Một folder = một lô, bất kể ngày |
+| `by_booking` | Buyer + BOOKING NO | 1 booking = 1 bộ container |
 | `by_exfty` | Buyer + ExFtyDate | Gom mọi JO cùng ngày (IKEA) |
 | `manual` | từng dòng riêng | User tự gom |
+
+Khi chế độ cần NO mà NO còn trống (chưa có invoice): gom theo **BOOKING NO**; không có cả hai thì mỗi JO một nhóm riêng — **không gom bừa**.
 
 ---
 
@@ -270,6 +347,17 @@ Thuật toán `priority` (mặc định, đúng như SRS):
 | 60 | 1 × 40HC | 63 | 3 |
 | **160** | **2 × 40HC + 1 × 40DC** | **179** | **19** |
 
+**CONT TYPE User đã book** (cột D file thật) được ưu tiên hơn đề xuất của Bot — nhưng Bot **luôn kiểm tra đủ tải**:
+
+| CONT TYPE | CBM nhóm | Kết quả |
+|---|---|---|
+| `1x20` | 15.14 | 23 ≥ 15.14 → `USER_CONFIRMED`, khớp đề xuất Bot |
+| `1x20` | 27.1 | 23 < 27.1 → **THIẾU 4.1 CBM** → `EX014` CRITICAL |
+| `2x40HC` | 115 | 126 ≥ 115 → `USER_CONFIRMED` (Bot đề xuất 1x40HC + 1x40DC) |
+| `3x45` | — | không hiểu → `EX014` |
+
+Đọc được: `1x20`, `1x40`, `1X40HQ`, `2x40HC+1x20`, `40HC`, `1x40'`, `LCL`, `CFS`, `AIR`. Quy ước: `20` = 20ST, `40` = 40DC, `40HC/40HQ` = 40HC.
+
 Thuật toán `min_excess` (tùy chọn): tìm tổ hợp dư ít nhất — cho kết quả khác SRS, chỉ dùng khi công ty đổi quy tắc.
 
 Kết quả lưu: `total_cbm`, `qty_40hc/40dc/20st`, `estimated_capacity`, `excess_capacity`, `allocation_status` (`AUTO` / `USER_CONFIRMED` / `NEED_REVIEW`), `allocation_source` (`BOT` / `USER`).
@@ -289,12 +377,17 @@ Thứ tự quyết định: **Buyer Rule → Explicit Shipment Rule → Default 
 ### Status Engine
 
 ```
-1. HOLD?    YES → RED         (ưu tiên cao nhất)
+1. HOLD?    YES → RED         (ưu tiên cao nhất; file thật: từ khóa HOLD trong REMARK)
 2. CANCEL?  YES → CANCELLED
 3. SHIPPED? đủ → COMPLETED · một phần → PARTIAL
-4. BOOKING? NO  → WHITE
-5. CDF + BL đủ? NO → YELLOW · YES → GREEN
+4. BOOKING? NO  → WHITE       (có BOOKING NO = đã book)
+5. CDF + BL đủ? NO → YELLOW
+6.              YES → GREEN
+7. GREEN + CONT + SEAL (hàng FCL) + ETD đã qua → COMPLETED
+8. Nhóm cùng NO: có dòng đã CONT+SEAL, có dòng chưa → cả nhóm PARTIAL
 ```
+
+Bước 7–8 trả lời câu hỏi gốc *"hàng xuất chiều tối nay, xong được 1 nửa, mai đóng tiếp — làm sao biết khi nào xuất xong thành công"*: nửa đã đóng → cam `PARTIAL` · đóng đủ + tàu chạy → xanh dương `COMPLETED`. Chỉnh trong `config.yaml → status.completed_rule`.
 
 Mỗi kết quả kèm **trace** từng bước để trả lời "Why Yellow?".
 
@@ -395,6 +488,8 @@ Chọn sheet theo thứ tự: **Buyer Rule `site` → `site_rules` trong config.
 | `EX010` | Header Excel thay đổi |
 | `EX011` | Trường bắt buộc bị trống |
 | `EX012` | Không ghi được file đích |
+| `EX013` | Công thức Excel bị gõ đè / thiếu / không khớp |
+| `EX014` | CONT TYPE User book không đủ chỗ hoặc không đọc được |
 
 Mỗi exception có: `severity`, `source_file`, `source_sheet`, `source_row`, `source_column`, `value`, `reason`, `suggested_action`, `dedup_key`.
 
@@ -421,6 +516,20 @@ A ≠ B  →  STOP WRITE + EX007 + popup
 ```
 
 Bot **không bao giờ** force overwrite.
+
+### Màu bạn tô tay trong Excel
+
+Trước khi có Bot, trạng thái được đánh dấu bằng **màu dòng**. Bot tiếp tục tôn trọng thói quen đó:
+
+| Bạn làm | Bot hiểu |
+|---|---|
+| Tô đỏ một dòng | User override = `RED` (hold) — Bot không tô đè |
+| Tô vàng / xanh / xám… (màu trong bảng trạng thái) | Override theo trạng thái của màu đó |
+| Tô lại đúng màu Bot đang tô | Trả quyền cho Bot, bỏ override |
+| Tô màu lạ (không có trong bảng) | Dòng thuộc về bạn — Bot **không tô đè**, không đổi trạng thái |
+| Xóa màu | Bỏ override |
+
+Bot phân biệt màu của nó với màu của bạn bằng cách lưu `last_bot_color` và `user_color` cho từng dòng. Tắt tính năng: `status.read_user_colors: false`.
 
 ### Effective Value
 

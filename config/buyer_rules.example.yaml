@@ -74,6 +74,20 @@ buyers:
     site: "TDV"
     lcl_threshold_cbm: 20
 
+  # Buyer gia lap cho file cau truc that (FollowUp_UserC). CO Form VK = C/O Viet Nam - Han Quoc.
+  # Thay bang ma buyer that cua ban trong config/buyer_rules.yaml (file nay khong dua len GitHub).
+  - code: "KRB"
+    canonical_name: "KRB"
+    aliases: ["KRB KOREA", "KRB CO"]
+    co_required: true
+    co_form: "VK"
+    container_rule: "standard"
+    shipment_group: "by_no_exfty"     # gom theo NO (= so invoice) -> 1 NO = 1 bo container
+    invoice_rule: "single"
+    declaration_rule: "one_per_shipment"
+    destination_default: "KR"
+    site: "TGV"
+
   - code: "SAMSUNG"
     canonical_name: "SAMSUNG"
     aliases: ["SAMSUNG ELEC", "SS ELECTRONICS"]

@@ -6,7 +6,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -33,6 +33,7 @@ def init_engine(url: str, echo: bool = False) -> Engine:
             cur.close()
 
     Base.metadata.create_all(_engine)
+    _add_missing_columns(_engine)
     _SessionFactory = sessionmaker(bind=_engine, expire_on_commit=False, future=True)
     return _engine
 
@@ -62,3 +63,26 @@ def new_session() -> Session:
     if _SessionFactory is None:
         raise RuntimeError("Database chua duoc khoi tao. Goi init_engine() truoc.")
     return _SessionFactory()
+
+
+def _add_missing_columns(engine: Engine) -> list[str]:
+    """Nang cap DB cu: them cot moi (khong xoa, khong doi cot cu).
+
+    Dung khi cap nhat phan mem ma van giu database dang chay. Chi ADD COLUMN,
+    thay doi phuc tap hon can dung Alembic (xem docs/DEVELOPER_GUIDE.md).
+    """
+    added: list[str] = []
+    insp = inspect(engine)
+    existing_tables = set(insp.get_table_names())
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if table.name not in existing_tables:
+                continue
+            have = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name in have:
+                    continue
+                ddl_type = col.type.compile(dialect=engine.dialect)
+                conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN {col.name} {ddl_type}'))
+                added.append(f"{table.name}.{col.name}")
+    return added

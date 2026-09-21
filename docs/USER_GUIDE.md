@@ -33,6 +33,63 @@ Bot tô nền cả dòng theo trạng thái:
 
 **Đỏ luôn thắng.** Một lô có đủ CDF + BL nhưng đang HOLD vẫn là đỏ — vì hold là việc cần xử lý ngay.
 
+**Xanh dương = đã xuất xong thật sự**, khi đủ cả: CDF# + BL# + CONT + SEAL (hàng đi container) + ETD đã qua. Hàng AIR / LCL không cần CONT + SEAL.
+
+**Cam = xuất dở dang.** Cùng một NO mà có dòng đã ghi CONT + SEAL, có dòng chưa → cả nhóm cam, lý do ghi rõ "đóng xong 2/4 dòng". Đóng đủ + tàu chạy → chuyển xanh dương.
+
+Bot **không tô cột A (NO)** — cột này là công thức, đang tô vàng để đánh dấu. Muốn đổi: `config.yaml → files → color_skip_columns`.
+
+---
+
+## Bạn vẫn có thể tô màu tay
+
+Trước giờ trạng thái được đánh dấu bằng màu dòng — Bot giữ nguyên thói quen đó. **Màu bạn tô = bạn chốt trạng thái**, Bot không tô đè:
+
+| Bạn làm trong Excel | Bot hiểu |
+|---|---|
+| Tô đỏ một dòng | Lô đang HOLD → nhắc lại mỗi 3 ngày |
+| Tô vàng / xanh lá / xám | Chốt trạng thái theo màu đó |
+| Tô lại đúng màu Bot đang tô | Trả lại cho Bot tự quản |
+| Tô màu khác (tím, xám đậm…) | Dòng đó thuộc về bạn — Bot không tô đè, không đổi trạng thái |
+| Xóa màu | Bot quản lại từ lần quét sau |
+
+Mọi lần như vậy đều ghi vào Audit Log với tên `excel:<người dùng>`.
+
+## HOLD / CANCEL ghi ở cột REMARK
+
+File Follow Up không có cột HOLD riêng, nên chỉ cần gõ vào REMARK:
+
+| REMARK | Bot hiểu |
+|---|---|
+| `HOLD - chờ khách duyệt mẫu` | RED, lý do = cả câu |
+| `CANCEL booking, gộp lô sau` | CANCELLED |
+| `UNHOLD` / `release hold` | **không** phải hold |
+
+Danh sách từ khóa: `config/field_mapping.yaml → remark_keywords`.
+
+## Bot kiểm tra CONT TYPE bạn đã book
+
+Cột D (CONT TYPE) là container **bạn** book — Bot không đổi, chỉ kiểm tra có đủ chỗ không. Ô merge cho cả nhóm (`D2:D5`) được tính **một lần**, không phải mỗi dòng một cont.
+
+| Bạn ghi | Tổng CBM nhóm | Bot báo |
+|---|---|---|
+| `1x20` | 15.14 | Khớp — đủ chỗ, dư 7.86 CBM |
+| `1x20` | 27.1 | **THIẾU 4.1 CBM** — popup đỏ `EX014` |
+| `2x40HC` | 115 | Đủ chỗ (ghi kèm phương án Bot tính được: 1x40HC + 1x40DC) |
+
+Bot đọc được: `1x20`, `1x40`, `1x40HC`, `1X40HQ`, `2x40HC+1x20`, `LCL`, `AIR`.
+
+## Cột công thức phải còn nguyên
+
+Các cột **NO, 95% FOB, CDF AMOUNT, TSN AMOUNT** là công thức. Bot kiểm mỗi lần quét:
+
+| Tình huống | Bot báo `EX013` |
+|---|---|
+| Ai đó gõ số đè lên công thức NO | "A13 bị gõ đè 999, đúng ra là 902 (tính từ INVOICE TEGV03010)" |
+| Thêm dòng mới quên kéo công thức | "Dòng 14 chưa có công thức cột A" — Bot **tự tính** NO = 903 để không bị lỡ việc |
+
+Cách sửa: kéo lại công thức từ dòng trên xuống. Bot **không bao giờ** tự sửa công thức của bạn.
+
 ---
 
 ## Bot nhắc gì, khi nào
@@ -123,6 +180,8 @@ Mọi thứ Bot **không chắc chắn** đều vào đây thay vì bị đoán 
 | `EX008` | Buyer chưa có rule | Thêm vào `buyer_rules.yaml` |
 | `EX009` | Không tự quyết được container | Vào chi tiết lô chọn thủ công |
 | `EX010` | Header Excel đổi tên | Vào Mapping ánh xạ lại cột |
+| `EX013` | Công thức bị gõ đè / thiếu | Kéo lại công thức từ dòng trên |
+| `EX014` | CONT TYPE không đủ chỗ / không đọc được | Book thêm cont hoặc sửa cách ghi |
 
 Xử lý xong bấm **Đã xử lý** (hoặc **Bỏ qua** nếu không liên quan).
 
@@ -192,7 +251,11 @@ Thay đổi ở đây có hiệu lực ngay. Muốn giữ vĩnh viễn (sau khi 
 
 **Đã book rồi lại cancel, chờ gộp lô sau** — điền `Cancel = Yes` → xám. Bot còn tự gợi ý ghép: cùng buyer, ngày xuất cách nhau ≤ 7 ngày, tổng CBM vừa một container → hiện ở Dry Run, mục *Gợi ý gộp lô*. Bot chỉ gợi ý, bạn quyết định.
 
-**Xuất tối nay một nửa, mai đóng tiếp** — điền `Shipped Qty` số đã xuất. Ít hơn `FinalExportQty` → cam (`PARTIAL`). Điền đủ → xanh dương (`COMPLETED`).
+**Xuất tối nay một nửa, mai đóng tiếp** — ghi CONT + SEAL cho các dòng đã đóng. Nhóm cùng NO còn dòng chưa đóng → cả nhóm cam (`PARTIAL`, "đóng xong 2/4 dòng"). Đủ CONT + SEAL + CDF + BL và ETD đã qua → xanh dương (`COMPLETED`). File có cột `Shipped Qty` thì Bot dùng thêm cột đó.
+
+**JO tách KR01 / KR02 nhưng xuất chung** — hai JO khác nhau, cùng invoice → cùng NO → Bot coi là **một nhóm container**, tính CBM chung.
+
+**Chưa có invoice** — NO còn trống (công thức trả ""). Bot vẫn theo dõi lô bằng JO + ngày xuất; khi invoice có, NO hiện ra và **lô vẫn giữ nguyên lịch sử**, không bị nhân đôi.
 
 **Đổi ngày xuất** — Bot tính lại toàn bộ deadline, ghi Audit Log, và báo dòng cũ còn sót ở file Planning để bạn xóa. Bot **không tự xóa** dòng trong file dùng chung vì có thể có ghi chú của người khác.
 
@@ -210,6 +273,8 @@ Thay đổi ở đây có hiệu lực ngay. Muốn giữ vĩnh viễn (sau khi 
 - Đoán bừa khi dữ liệu không rõ
 - Tự quyết container khi buyer yêu cầu duyệt
 - Xóa dòng trong file dùng chung
+- Ghi đè hoặc sửa công thức của bạn
+- Làm mất external link, defined name, comment, thiết lập in của file (Bot chỉ sửa đúng ô cần sửa)
 
 ---
 

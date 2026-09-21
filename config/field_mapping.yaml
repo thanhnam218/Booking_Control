@@ -57,18 +57,26 @@ sheet_detection:
 # -----------------------------------------------------------------------------
 fields:
 
+  # ===========================================================================
+  # NHOM 1 - DINH DANH LO HANG
+  # ===========================================================================
+
   ShipmentNo:
     type: string
-    required: true
-    description: "So NO / so folder xuat khau. Thanh phan cua Shipment Key."
-    aliases: ["No", "NO.", "No.", "STT", "So NO", "NO Folder", "Folder No",
+    required: false
+    description: >-
+      So NO / so folder xuat khau. Trong file that la CONG THUC tinh tu INVOICE:
+      =IF(LEFT(M2,4)="TEGV",RIGHT(M2,5)-2108,"") -> truoc khi co invoice thi NO trong.
+      Vi vay NO KHONG nam trong Shipment Key, chi dung de gom lo (xem derived_fields).
+    aliases: ["NO", "No", "NO.", "No.", "STT", "So NO", "NO Folder", "Folder No",
               "Shipment No", "ShipmentNo", "Export No", "So folder"]
 
   ExFtyDate:
     type: date
     required: true
     description: "Ngay xuat khoi nha may. Goc tinh toan moi deadline T-20..T-1."
-    aliases: ["ExFtyDate", "Ex Fty Date", "EXFTY DATE", "EXFTY", "ExFty",
+    aliases: ["EX-FACT DATE", "EX FACT DATE", "EXFACT DATE", "Ex-Factory Date",
+              "ExFtyDate", "Ex Fty Date", "EXFTY DATE", "EXFTY", "ExFty",
               "Ex-Fty Date", "Export Factory Date", "Ngay xuat", "ETD Factory",
               "Ex Factory Date", "ExFactoryDate"]
 
@@ -82,98 +90,279 @@ fields:
   JO:
     type: string
     required: true
-    description: "Job Order. KHONG phai primary key (1 JO co the nhieu ExFtyDate)."
+    description: >-
+      Job Order. KHONG phai primary key. File that tach JO bang hau to
+      (26V09001KR01 / 26V09001KR02) va van xuat chung 1 NO, 1 invoice, 1 cont.
     aliases: ["JO", "JO No", "JO#", "JobOrder", "Job Order", "Job No",
               "JO Number", "So JO"]
 
-  CustomsCode:
+  GO:
     type: string
     required: false
-    description: "Ma HS / Customs Code (GO) - dung cho file Custom Code."
-    aliases: ["Customs Code(GO)", "Customs Code", "CustomsCode", "HS Code",
-              "HSCode", "Customs Code (GO)", "Ma HS", "Code GO", "GO Code"]
+    description: "Garment Order (S26V09001). KHONG phai Customs Code / HS Code."
+    aliases: ["GO", "GO No", "GO#", "Garment Order"]
+
+  PO:
+    type: string
+    required: false
+    aliases: ["PO", "PO No", "PO#", "Purchase Order", "Customer PO"]
+
+  Style:
+    type: string
+    required: false
+    aliases: ["STYLE", "Style No", "Style#", "Ma hang"]
+
+  Description:
+    type: string
+    required: false
+    aliases: ["Description", "Desc", "Mo ta", "Goods Description", "Commodity"]
+
+  ColorCode:
+    type: string
+    required: false
+    aliases: ["Color code", "Colour Code", "Ma mau"]
+
+  CustColor:
+    type: string
+    required: false
+    aliases: ["Cust Color", "Customer Color", "Cust Colour"]
+
+  # ===========================================================================
+  # NHOM 2 - VAN CHUYEN
+  # ===========================================================================
+
+  ContainerType:
+    type: string
+    required: false
+    description: >-
+      Loai / so luong cont User da book (1x20, 2x40HC, LCL...). Thuong la O MERGE
+      cho ca nhom dong cung NO -> tinh 1 lan cho ca nhom. Day la lua chon cua USER,
+      Bot chi doi chieu voi CBM va canh bao neu thieu cho.
+    aliases: ["CONT TYPE", "Cont Type", "Container Type", "ContainerType",
+              "Loai cont", "Type Cont", "Equipment"]
 
   ShipMode:
     type: string
     required: false
-    description: "AIR / SEA. Chuan hoa qua bang ship_mode duoi day."
-    aliases: ["Ship", "Ship Mode", "ShipMode", "Mode", "Shipment Mode",
-              "Transport", "By", "Phuong thuc", "MODE"]
+    description: "AIR / SEA. Gia tri 'S' / 'A' trong file that duoc chuan hoa qua value_maps.ship_mode."
+    aliases: ["MODE", "Ship", "Ship Mode", "ShipMode", "Mode", "Shipment Mode",
+              "Transport", "By", "Phuong thuc"]
 
   Destination:
     type: string
     required: false
-    aliases: ["Destination", "Dest", "POD", "Port of Discharge", "Cang den",
+    aliases: ["DEST", "Destination", "Dest", "POD", "Port of Discharge", "Cang den",
               "Noi den", "Country"]
+
+  ETD:
+    type: date
+    required: false
+    description: "Ngay tau chay. ETD da qua + du CDF/BL/CONT/SEAL -> COMPLETED."
+    aliases: ["ETD", "ETD Date", "Ngay tau chay"]
+
+  ETA:
+    type: date
+    required: false
+    aliases: ["ETA", "ETA Date", "Ngay den"]
+
+  Vessel:
+    type: string
+    required: false
+    aliases: ["VESSEL", "Vessel Name", "Ten tau", "Voyage", "Vessel/Voy", "Flight No"]
+
+  Port:
+    type: string
+    required: false
+    description: "Cang / kho dong hang (CAT LAI...)."
+    aliases: ["PORT/WH", "PORT WH", "Port", "Warehouse", "Kho", "Cang xuat", "POL"]
+
+  ClosingTime:
+    type: string
+    required: false
+    description: "Gio cat mang hang (vd '17H SEP-05'). Giu nguyen van ban."
+    aliases: ["Cargos closing time", "Cargo closing time", "Closing time",
+              "Cut off", "CY Cut off", "Closing", "Cut-off"]
+
+  ContainerNo:
+    type: string
+    required: false
+    description: "So container da dong. Co CONT + SEAL = da dong hang xong."
+    aliases: ["CONT", "CONT NO", "Container", "Container No", "Cont#", "So cont"]
+
+  SealNo:
+    type: string
+    required: false
+    aliases: ["SEAL", "Seal No", "Seal#", "So seal"]
+
+  # ===========================================================================
+  # NHOM 3 - SO LUONG / TRONG LUONG / THE TICH
+  # ===========================================================================
 
   OrderQty:
     type: decimal
     required: false
-    aliases: ["OrderQty", "Order Qty", "Order Quantity", "Qty Order", "SL dat"]
-
-  Invoice:
-    type: string
-    required: false
-    description: "So invoice. 1 shipment co the co NHIEU invoice (tach bang , ; /)."
-    aliases: ["EELInvoice", "EEL Invoice", "Invoice", "INV", "Inv", "Invoice No",
-              "InvoiceNo", "So Invoice", "Commercial Invoice"]
+    aliases: ["ORDER QTY", "OrderQty", "Order Qty", "Order Quantity", "Qty Order", "SL dat"]
 
   FinalExportQty:
     type: decimal
     required: false
-    aliases: ["FinalExportQty", "Final Export Qty", "Final Qty", "FinalQty",
+    aliases: ["FinaL Qty", "Final Qty", "FinalQty", "FinalExportQty", "Final Export Qty",
               "PCS", "Pcs", "Export Qty", "SL xuat", "Actual Qty"]
 
   FinalCartonQty:
     type: decimal
     required: false
-    aliases: ["Final CartonQty", "Final Carton Qty", "FinalCartonQty", "Carton",
-              "CTN", "Ctns", "Carton Qty", "So thung", "Total Carton"]
+    aliases: ["CTNS", "Final CartonQty", "Final Carton Qty", "FinalCartonQty", "Carton",
+              "CTN", "Carton Qty", "So thung", "Total Carton"]
 
   GrossWeight:
     type: decimal
     required: false
-    aliases: ["Gross Weight (GW)", "Gross Weight", "GW", "G.W", "G.W.",
+    aliases: ["G.W", "G.W.", "GW", "Gross Weight (GW)", "Gross Weight",
               "GrossWeight", "Trong luong"]
 
   FinalCBM:
     type: decimal
     required: false
     description: "So khoi. Dau vao cua Container Allocation Engine."
-    aliases: ["Final CBM", "FinalCBM", "CBM", "M3", "Final CBM (M3)", "Total CBM",
+    aliases: ["CBM", "Final CBM", "FinalCBM", "M3", "Final CBM (M3)", "Total CBM",
               "Volume", "Khoi"]
+
+  # ===========================================================================
+  # NHOM 4 - GIA / TIEN  (cac cot X, Y, Z trong file that la CONG THUC)
+  # ===========================================================================
+
+  Price:
+    type: decimal
+    required: false
+    description: "Gia 100% FOB."
+    aliases: ["100% FOB", "100 FOB", "FOB 100%", "Price", "Unit Price", "Gia", "FOB Price"]
+
+  DiscountPrice:
+    type: decimal
+    required: false
+    description: "Gia 95% FOB = ROUND(100% FOB * 0.95, 2) - cong thuc trong Excel."
+    aliases: ["95% FOB", "95 FOB", "FOB 95%", "Discount Price", "DiscountPrice",
+              "Disc Price", "Gia sau CK", "Net Price"]
+
+  CdfAmount:
+    type: decimal
+    required: false
+    description: "Tri gia to khai = 95% FOB * Final Qty (cong thuc)."
+    aliases: ["CDF AMOUNT", "CDF Amt", "Tri gia to khai"]
+
+  TsnAmount:
+    type: decimal
+    required: false
+    description: "= 100% FOB * Final Qty (cong thuc)."
+    aliases: ["TSN AMOUNT", "TSN Amt"]
+
+  Currency:
+    type: string
+    required: false
+    aliases: ["CURRENCY", "Curr", "CCY", "Tien te"]
+
+  Term:
+    type: string
+    required: false
+    aliases: ["TERM", "Incoterm", "Trade Term", "Dieu kien giao hang"]
+
+  # ===========================================================================
+  # NHOM 5 - CHUNG TU
+  # ===========================================================================
+
+  Invoice:
+    type: string
+    required: false
+    description: "So invoice (TEGV03001). 1 shipment co the NHIEU invoice (tach bang , ; /)."
+    aliases: ["INVOICE", "EELInvoice", "EEL Invoice", "Invoice", "INV", "Inv", "Invoice No",
+              "InvoiceNo", "So Invoice", "Commercial Invoice"]
+
+  CustomsCode:
+    type: string
+    required: false
+    description: "Ma HS - dung cho file Custom Code."
+    aliases: ["HS CODE", "HS Code", "HSCode", "Customs Code", "CustomsCode",
+              "Customs Code(GO)", "Customs Code (GO)", "Ma HS"]
+
+  BookingNo:
+    type: string
+    required: false
+    description: "So booking hang tau. Co gia tri = DA BOOK (khong can cot Booking rieng)."
+    aliases: ["BOOKING NO", "Booking No", "BookingNo", "BKG No", "Booking#", "So booking"]
+
+  BookingDate:
+    type: date
+    required: false
+    aliases: ["Booking date", "BKG Date", "Ngay book", "Booking Dt"]
 
   CDF:
     type: string
     required: false
-    description: "To khai hai quan. Co gia tri -> dieu kien chuyen sang GREEN."
-    aliases: ["CDF", "C/D", "CD", "Customs Declaration", "To khai", "CDF No",
+    description: "So to khai hai quan. Co gia tri -> dieu kien chuyen sang GREEN."
+    aliases: ["CDF#", "CDF", "C/D", "CD", "Customs Declaration", "To khai", "CDF No",
               "Declaration No"]
 
   BL:
     type: string
     required: false
     description: "Bill of Lading / AWB. Co gia tri -> dieu kien chuyen sang GREEN."
-    aliases: ["BL", "B/L", "BL No", "BL Number", "AWB", "MBL", "HBL",
+    aliases: ["BL#", "BL", "B/L", "BL No", "BL Number", "AWB", "MBL", "HBL",
               "Bill of Lading", "Van don"]
 
-  Price:
-    type: decimal
+  EShipment:
+    type: string
     required: false
-    aliases: ["Price", "Unit Price", "Gia", "Amount", "Value", "FOB Price"]
+    aliases: ["E-SHIPMENT", "E SHIPMENT", "eShipment", "E-Ship"]
 
-  DiscountPrice:
+  VatInvoice:
+    type: string
+    required: false
+    aliases: ["VAT INV", "VAT Invoice", "Hoa don VAT"]
+
+  VatDate:
+    type: date
+    required: false
+    aliases: ["VAT DATE", "VAT Invoice Date"]
+
+  VatAmount:
     type: decimal
     required: false
-    aliases: ["Discount Price", "DiscountPrice", "Disc Price", "Gia sau CK",
-              "Net Price", "Discount"]
+    aliases: ["VAT AMOUNT", "VAT Amt"]
+
+  CoNo:
+    type: string
+    required: false
+    description: "So C/O. Co gia tri -> CO = Yes khi ghi Weekly Planning."
+    aliases: ["CO NO", "C/O No", "CO Number", "So CO", "CO#"]
+
+  CoForm:
+    type: string
+    required: false
+    description: "Form C/O thuc te (VK, D, E, AK...). Uu tien hon Buyer Rule."
+    aliases: ["CO FORM", "C/O Form", "Form CO", "CO Type"]
+
+  CoCheck:
+    type: string
+    required: false
+    description: "Cot T/C CO trong file that - giu nguyen, chua dung trong rule."
+    aliases: ["T/C CO", "TC CO"]
+
+  CoGrantedDate:
+    type: date
+    required: false
+    aliases: ["CO granted date", "CO Date", "Ngay cap CO", "C/O Date"]
+
+  # ===========================================================================
+  # NHOM 6 - TRANG THAI  (file that KHONG co cac cot nay -> xem remark_keywords
+  #          va viec Bot doc mau dong User to tay)
+  # ===========================================================================
 
   BookingFlag:
     type: flag
     required: false
-    description: "Da booking hay chua. Neu file khong co cot nay, Bot suy ra tu Booking No/CDF/BL."
-    aliases: ["Booking", "Booked", "Booking Status", "BKG", "Booking No",
-              "BookingNo", "Da book", "Book"]
+    description: "Co da booking dang Yes/No. Neu khong co, Bot suy ra tu BookingNo / CDF / BL."
+    aliases: ["Booking", "Booked", "Booking Status", "BKG", "Da book", "Book"]
 
   HoldFlag:
     type: flag
@@ -183,25 +372,12 @@ fields:
   HoldReason:
     type: string
     required: false
-    aliases: ["Hold Reason", "HoldReason", "Reason", "Ly do", "Ly do hold",
-              "Remark Hold"]
+    aliases: ["Hold Reason", "HoldReason", "Ly do hold", "Remark Hold", "Ly do"]
 
   CancelFlag:
     type: flag
     required: false
     aliases: ["Cancel", "Cancelled", "Canceled", "Huy", "Da huy"]
-
-  PIC:
-    type: string
-    required: false
-    description: "Nguoi phu trach / nguoi xuat. Mac dinh lay tu owner cua file Follow Up."
-    aliases: ["PIC", "Person In Charge", "Nguoi xuat", "Nguoi phu trach",
-              "Handler", "Staff", "Owner", "Merchandiser"]
-
-  Remark:
-    type: string
-    required: false
-    aliases: ["Remark", "Remarks", "Note", "Notes", "Ghi chu", "Comment"]
 
   ShippedFlag:
     type: flag
@@ -216,6 +392,48 @@ fields:
     description: "So luong da xuat thuc te. < FinalExportQty -> PARTIAL."
     aliases: ["Shipped Qty", "ShippedQty", "Actual Shipped", "SL da xuat",
               "Loaded Qty"]
+
+  PIC:
+    type: string
+    required: false
+    description: "Nguoi phu trach / nguoi xuat. File that khong co -> lay owner cua file."
+    aliases: ["PIC", "Person In Charge", "Nguoi xuat", "Nguoi phu trach",
+              "Handler", "Staff", "Owner", "Merchandiser"]
+
+  Remark:
+    type: string
+    required: false
+    aliases: ["REMARK", "Remark", "Remarks", "Note", "Notes", "Ghi chu", "Comment"]
+
+# -----------------------------------------------------------------------------
+# TRUONG SUY RA TU CONG THUC EXCEL
+# -----------------------------------------------------------------------------
+# Tai tao dung cong thuc cua file that. Dung cho 2 viec:
+#   1. Fallback: o NO khong co gia tri tinh san (file bi luu boi cong cu khac,
+#      chua mo lai bang Excel) -> Bot tu tinh NO tu INVOICE, khong bo trong.
+#   2. Doi chieu: NO trong file khac voi ket qua cong thuc -> co nguoi go de
+#      len cong thuc -> Exception EX013.
+# -----------------------------------------------------------------------------
+derived_fields:
+  ShipmentNo:
+    source: Invoice
+    rule: invoice_suffix
+    prefix: "TEGV"          # LEFT(INVOICE,4)="TEGV"
+    last_digits: 5          # RIGHT(INVOICE,5)
+    offset: -2108           # -2108
+    excel_formula: '=IF(LEFT(INVOICE,4)="TEGV",RIGHT(INVOICE,5)-2108,"")'
+
+# -----------------------------------------------------------------------------
+# TU KHOA TRONG CO REMARK
+# -----------------------------------------------------------------------------
+# File that khong co cot HOLD / CANCEL. Neu REMARK chua tu khoa duoi day va file
+# khong co cot tuong ung -> Bot hieu la HOLD / CANCEL. Phan con lai cua REMARK
+# duoc dung lam ly do hold.
+remark_keywords:
+  hold: ["HOLD", "TAM DUNG", "GIU HANG", "ON HOLD", "CHO KHACH"]
+  cancel: ["CANCEL", "HUY BOOK", "HUY BOOKING", "DA HUY"]
+  # tu khoa phu dinh -> KHONG tinh la hold (vd "UNHOLD", "RELEASE HOLD")
+  hold_negations: ["UNHOLD", "UN-HOLD", "RELEASE", "HET HOLD", "BO HOLD"]
 
 # -----------------------------------------------------------------------------
 # VALUE NORMALIZATION - chuan hoa GIA TRI (khong phai ten cot)

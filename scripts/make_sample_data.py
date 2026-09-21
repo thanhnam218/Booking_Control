@@ -11,6 +11,8 @@ Bo du lieu nay co chu dich chua cac tinh huong kho:
   - Ngay ghi sai -> Exception
   - Lo dang HOLD, lo da CANCEL, lo xuat mot phan
   - Sheet Summary / Report khong phai Follow Up -> Bot phai tu bo qua
+  - FollowUp_UserC_CauTrucThat.xlsx: mo phong DUNG cau truc file that (47 cot,
+    cong thuc NO/FOB, o merge CONT TYPE) voi du lieu gia
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ from __future__ import annotations
 import datetime as dt
 import random
 from pathlib import Path
+from typing import Any
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -228,6 +231,157 @@ def build_follow_up_b(path: Path, today: dt.date, rnd: random.Random) -> Path:
 
 
 # ---------------------------------------------------------------------------
+# Follow Up theo CAU TRUC THAT (47 cot, cong thuc, o merge) - du lieu GIA
+# ---------------------------------------------------------------------------
+# Mo phong dung file Follow Up dang dung ngoai thuc te:
+#   - 47 cot, header co xuong dong ("EX-FACT\nDATE", "FinaL \nQty"...)
+#   - Cot A NO = CONG THUC tu INVOICE, to vang
+#   - Cot X/Y/Z = CONG THUC gia (95% FOB, CDF AMOUNT, TSN AMOUNT)
+#   - Cot D CONT TYPE MERGE cho ca nhom cung NO
+#   - Nen dong theo THEME color, dong trong da dinh dang san ben duoi
+# Du lieu hoan toan gia lap - khong chua thong tin that cua cong ty nao.
+
+REAL_HEADERS = [
+    "NO", "EX-FACT\nDATE", "BUYER", "CONT \nTYPE", "MODE", "DEST", "JO", "GO", "PO", "STYLE",
+    "Description", "ORDER \nQTY", "INVOICE", "FinaL \nQty", "CTNS", "G.W", "CBM", "ETD", "ETA",
+    "Color code", "Cust Color", "BOOKING NO", "100% \nFOB", "95%\nFOB", "CDF\nAMOUNT",
+    "TSN AMOUNT", "CURRENCY", "HS CODE", "CDF#", "BL#", "VESSEL", "E-SHIPMENT", " TERM",
+    "VAT INV", "VAT DATE", "VAT AMOUNT", "SQ", "Booking \ndate", "Cargos closing time",
+    "PORT/WH", "CO NO", "CO FORM", "T/C CO", "CO granted date", "CONT ", "SEAL", "REMARK",
+]
+REAL_WIDTHS = [6, 12, 10, 7, 6, 6, 16, 12, 13, 13, 30, 7, 12, 10, 7, 10, 9, 8, 8, 10, 10, 15,
+               7, 8, 10, 10, 9, 11, 15, 15, 14, 14, 7, 9, 10, 12, 8, 9, 14, 10, 18, 9, 9, 12, 14, 12, 26]
+NO_FORMULA = '=IF(LEFT(M{r},4)="TEGV",RIGHT(M{r},5)-2108,"")'
+
+
+def _real_no(invoice: str) -> Any:
+    if not invoice or not invoice.startswith("TEGV"):
+        return ""
+    return int(invoice[-5:]) - 2108
+
+
+def build_follow_up_real(path: Path, today: dt.date) -> Path:
+    from openpyxl.styles.colors import Color
+
+    def d(offset: int) -> dt.datetime:
+        x = today + dt.timedelta(days=offset)
+        return dt.datetime(x.year, x.month, x.day)
+
+    base_fill = PatternFill(fill_type="solid", fgColor=Color(theme=2, tint=-0.0999786370433668))
+    no_fill = PatternFill("solid", start_color="FFFFFF00", end_color="FFFFFF00")
+
+    # (NO-invoice, exfty, cont_type, jo, go, cbm, qty, ctns, gw, fob, booking, cdf, bl, etd, cont, seal, remark)
+    R = []
+
+    def add(inv, ex, jo, go, cbm, qty, ctns, gw, fob, booking="", cdf="", bl="", etd=None,
+            cont="", seal="", remark="", ctype="", no_mode="formula"):
+        R.append(dict(inv=inv, ex=ex, jo=jo, go=go, cbm=cbm, qty=qty, ctns=ctns, gw=gw, fob=fob,
+                      booking=booking, cdf=cdf, bl=bl, etd=etd, cont=cont, seal=seal,
+                      remark=remark, ctype=ctype, no_mode=no_mode))
+
+    # NO 893: 3 JO (tach KR01/KR02) chung 1 invoice, 1 cont 40HC (merge D2:D4) -> GREEN, T-5
+    for jo, go, cbm in (("26V09001KR01", "S26V09001", 22.5), ("26V09001KR02", "S26V09001", 18.3),
+                        ("26V09002KR01", "S26V09002", 16.9)):
+        add("TEGV03001", d(5), jo, go, cbm, 4200, 60, 900.5, 11.2, "VN0200001", "308900000101",
+            "DEMO0000101", d(9), ctype="1x40HC")
+    # NO 894: 2 JO, User book 1x20 nhung 27.1 CBM -> THIEU CHO; chua co CDF; T-2 thieu CTNS
+    add("TEGV03002", d(2), "26V09003KR01", "S26V09003", 14.2, 3000, None, 610.0, 9.5, "VN0200002",
+        ctype="1x20")
+    add("TEGV03002", d(2), "26V09003KR02", "S26V09003", 12.9, 2700, 40, 560.0, 9.5, "VN0200002",
+        ctype="1x20")
+    # NO 895: 2x40HC, dong 1 da dong cont + seal, dong 2 chua -> PARTIAL (xuat 1 nua)
+    add("TEGV03003", d(0), "26V09004KR01", "S26V09004", 60.0, 9000, 120, 2100.0, 8.8, "VN0200003",
+        "308900000103", "DEMO0000103", d(1), "DEMU1234567", "SL000001", ctype="2x40HC")
+    add("TEGV03003", d(0), "26V09004KR02", "S26V09004", 55.0, 8200, 110, 1950.0, 8.8, "VN0200003",
+        "308900000103", "DEMO0000103", d(1), ctype="2x40HC")
+    # Chua co invoice -> NO de trong (cong thuc tra ""), da co booking -> YELLOW, gom theo booking
+    add("", d(10), "26V09005KR01", "S26V09005", 30.0, 5000, 70, 1200.0, 10.0, "VN0200009")
+    # Chua booking, trong cua so T-20..T-14 -> WHITE + nhac booking
+    add("", d(17), "26V09006KR01", "S26V09006", 41.0, 6100, 85, 1500.0, 12.0)
+    # Dang HOLD (file that khong co cot HOLD -> ghi trong REMARK)
+    add("TEGV03004", d(12), "26V09007KR01", "S26V09007", 25.0, 3800, 52, 880.0, 9.9, "VN0200004",
+        remark="HOLD - cho khach duyet mau")
+    # Da xuat xong: CDF + BL + CONT + SEAL + ETD da qua -> COMPLETED
+    add("TEGV02998", d(-6), "26V08990KR01", "S26V08990", 20.0, 3100, 44, 700.0, 10.5, "VN0200000",
+        "308900000100", "DEMO0000100", d(-3), "DEMU7654321", "SL000000", ctype="1x20")
+    # NO bi go de bang gia tri 999 (dung ra 902) -> EX013
+    add("TEGV03010", d(25), "26V09010KR01", "S26V09010", 18.0, 2500, 35, 500.0, 9.0, no_mode="typed:999")
+    # Dong moi quen keo cong thuc NO -> EX013, Bot tu tinh NO = 903 tu invoice
+    add("TEGV03011", d(26), "26V09011KR01", "S26V09011", 19.0, 2600, 36, 520.0, 9.0, no_mode="empty")
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "KRB+KRX(KR)"
+    _write_rows(ws, REAL_HEADERS, [], widths=REAL_WIDTHS)
+    ws.freeze_panes = "K2"
+
+    for i, x in enumerate(R):
+        r = i + 2
+        if x["no_mode"] == "formula":
+            ws.cell(r, 1, NO_FORMULA.format(r=r))
+        elif x["no_mode"].startswith("typed:"):
+            ws.cell(r, 1, int(x["no_mode"].split(":")[1]))
+        row = {2: x["ex"], 3: "KRB", 4: x["ctype"] or None, 5: "S", 6: "KR", 7: x["jo"], 8: x["go"],
+               9: f"26KR{9000 + i:07d}", 10: 3240000 + i, 11: "BOYS 100% COTTON KNITTED T-SHIRT",
+               12: x["qty"], 13: x["inv"] or None, 14: x["qty"], 15: x["ctns"], 16: x["gw"],
+               17: x["cbm"], 18: x["etd"], 19: (x["etd"] + dt.timedelta(days=6)) if x["etd"] else None,
+               22: x["booking"] or None, 23: x["fob"],
+               24: f"=ROUND(W{r}*0.95,2)", 25: f"=X{r}*N{r}", 26: f"=W{r}*N{r}", 27: "USD",
+               28: 61091010, 29: x["cdf"] or None, 30: x["bl"] or None,
+               31: "DEMO VESSEL 2609N" if x["bl"] else None, 33: "FOB",
+               38: (x["ex"] - dt.timedelta(days=12)) if x["booking"] else None,
+               39: "17H" if x["booking"] else None, 40: "CAT LAI",
+               41: "VN-KR 26/06/000001" if x["cdf"] else None, 42: "VK" if x["cdf"] else None,
+               45: x["cont"] or None, 46: x["seal"] or None, 47: x["remark"] or None}
+        for c, v in row.items():
+            if v is not None:
+                ws.cell(r, c, v)
+        for c in range(1, 48):
+            ws.cell(r, c).fill = no_fill if c == 1 else base_fill
+        ws.cell(r, 2).number_format = "mm-dd-yy"
+        for c in (18, 19, 38):
+            ws.cell(r, c).number_format = "d-mmm"
+
+    # O merge CONT TYPE cho moi nhom (giong file that D2:D5)
+    for a, b in ((2, 4), (5, 6), (7, 8)):
+        ws.merge_cells(start_row=a, start_column=4, end_row=b, end_column=4)
+
+    # Dong trong da dinh dang san (file that co san vung nay)
+    last = len(R) + 1
+    for r in range(last + 1, last + 7):
+        for c in range(2, 47):
+            ws.cell(r, c).fill = base_fill
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    wb.save(path)
+    _add_cached_values(path, ws.title, R)
+    return path
+
+
+def _add_cached_values(path: Path, sheet: str, rows: list[dict]) -> None:
+    """openpyxl luu cong thuc KHONG kem gia tri tinh san. Excel thi co.
+    Them gia tri tinh san de file demo giong file Excel that da duoc luu."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+    from booking_bot.excel.xlsx_patch import XlsxPackage  # noqa: E402
+
+    pkg = XlsxPackage(path)
+    sh = pkg.sheet(sheet)
+    for i, x in enumerate(rows):
+        r = i + 2
+        if x["no_mode"] == "formula":
+            sh.set_cached_value(r, 1, _real_no(x["inv"]))
+        p95 = round(x["fob"] * 0.95, 2)
+        sh.set_cached_value(r, 24, p95)
+        sh.set_cached_value(r, 25, round(p95 * x["qty"], 2))
+        sh.set_cached_value(r, 26, round(x["fob"] * x["qty"], 2))
+    tmp = path.with_suffix(".tmp.xlsx")
+    pkg.save(tmp)
+    tmp.replace(path)
+
+
+# ---------------------------------------------------------------------------
 # File dung chung
 # ---------------------------------------------------------------------------
 
@@ -293,6 +447,7 @@ def build_all(out_dir: Path, seed: int = 42, today: dt.date | None = None) -> li
     return [
         build_follow_up_a(out_dir / "FollowUp_UserA.xlsx", today, rnd),
         build_follow_up_b(out_dir / "FollowUp_UserB.xlsx", today, rnd),
+        build_follow_up_real(out_dir / "FollowUp_UserC_CauTrucThat.xlsx", today),
         build_weekly_planning(out_dir / "WEEKLY_PLANNING_2026.xlsx"),
         build_custom_code(out_dir / "CUSTOM_CODE.xlsx"),
         build_mm_daily(out_dir / "MM_DAILY_PLANNING_SEP_2026_GV.xlsx"),

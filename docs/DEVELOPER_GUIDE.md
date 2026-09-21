@@ -13,7 +13,7 @@ pip install -r requirements-dev.txt
 pip install -e .
 
 python -m booking_bot sample     # tạo dữ liệu demo
-pytest -q                        # 141 test, chạy khoảng 20s
+pytest -q                        # 182 test, khoảng 80 giây
 ```
 
 Trên Linux/macOS các thư viện Windows (`pystray`, `winotify`, `pywin32`) tự động bị bỏ qua; toàn bộ core, web và test vẫn chạy bình thường.
@@ -84,7 +84,7 @@ sh.vessel_name = clean_text(v.get("VesselName"))
 
 Xong. Reader và mapper tự động xử lý phần còn lại — không phải sửa gì trong `excel/`.
 
-> SQLite không tự thêm cột. Trong lúc phát triển: xóa `data/bookingbot.db`. Khi đã chạy thật: dùng Alembic hoặc `ALTER TABLE` thủ công.
+> Cột mới được **tự thêm** vào database đang chạy khi khởi động (`db/session._add_missing_columns`, chỉ ADD COLUMN). Đổi kiểu / xóa cột thì cần Alembic.
 
 ### Thêm một file đích mới
 
@@ -239,22 +239,26 @@ Mỗi test có `tmp_path` riêng → chạy song song được, không ảnh hư
 
 ## Những điểm cần cẩn thận
 
-### openpyxl và định dạng Excel
+### Ghi Excel: KHÔNG dùng openpyxl để lưu
 
-Mở file để **ghi** phải dùng `data_only=False`:
+openpyxl chỉ được dùng để **đọc**. Mọi thao tác ghi đi qua `excel/xlsx_patch.py`:
 
 ```python
-load_workbook(path, data_only=False)   # ✓ giữ công thức
-load_workbook(path, data_only=True)    # ✗ công thức bị thay bằng giá trị khi save
+from booking_bot.excel.xlsx_patch import XlsxPackage
+
+pkg = XlsxPackage("Follow Up.xlsx")
+sh = pkg.sheet("KRB+KRX(KR)")
+sh.fill_row(5, "FF92D050", cols=range(2, 48))   # tô màu, không đụng giá trị
+sh.set_value(20, 7, "26V09999KR01")              # False nếu ô là công thức
+sh.copy_formulas(from_row=19, to_row=20, cols=[1, 24, 25, 26])
+pkg.save("Follow Up.tmp.xlsx")                   # chỉ part bị sửa được serialize lại
 ```
 
-`data_only=True` chỉ dùng khi **đọc**.
+Lý do (đo trên file thật): openpyxl lưu lại làm **mất giá trị tính sẵn của mọi công thức** (cột NO đọc lại = `None`), mất defined name, thiết lập in, calcChain, viết lại 33 external link. Chi tiết: [ARCHITECTURE.md § 5.7](ARCHITECTURE.md#57-ghi-excel-lossless).
 
-openpyxl giữ được: công thức, định dạng ô, màu nền, độ rộng cột, freeze panes, conditional formatting cơ bản.
+Chạy `bookingbot check` để xem từng file có gì mà openpyxl sẽ làm mất.
 
-openpyxl **có thể mất**: biểu đồ, hình ảnh, pivot table, macro VBA, một số conditional formatting phức tạp, data validation nâng cao.
-
-→ Nếu file đích chứa những thứ này, cân nhắc dùng `xlwings` (điều khiển Excel thật, cần Excel cài trên máy) cho riêng file đó. Backup trước mỗi lần ghi là lớp bảo vệ cuối cùng.
+Khi test cần file có công thức **kèm giá trị tính sẵn** (giống Excel lưu): tạo bằng openpyxl rồi gọi `SheetPatch.set_cached_value()` — xem `scripts/make_sample_data._add_cached_values`.
 
 ### Ngày tháng
 

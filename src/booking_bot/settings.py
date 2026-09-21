@@ -55,6 +55,8 @@ class FileCfg(BaseModel):
     sheet: str | None = None
     header_row: int | None = None
     sheets_by_site: dict[str, str] = Field(default_factory=dict)
+    # Cot KHONG to mau khi doi mau dong (vd cot NO la cong thuc, User to vang de danh dau)
+    color_skip_columns: list[str] = Field(default_factory=list)
 
     @property
     def options(self) -> dict[str, Any]:
@@ -144,6 +146,21 @@ class CustomStatus(BaseModel):
     notify: bool = False
 
 
+class CompletedRule(BaseModel):
+    """Khi nao coi la DA XUAT XONG (tra loi cau hoi goc trong yeu cau)."""
+
+    enabled: bool = True
+    require_container_seal: bool = True   # hang FCL phai co CONT + SEAL
+    require_etd_passed: bool = True       # ngay tau chay (ETD) da qua
+    group_partial: bool = True            # nhom cung NO: dong cont do dang -> PARTIAL
+
+
+class ShipmentCfg(BaseModel):
+    # NO trong file that la cong thuc tu INVOICE -> khong dua vao khoa (xem core/shipment.py)
+    key_includes_no: bool = False
+    merge_window_days: int = 7
+
+
 class StatusCfg(BaseModel):
     colors: dict[str, str] = Field(
         default_factory=lambda: {
@@ -158,6 +175,22 @@ class StatusCfg(BaseModel):
     )
     custom: list[CustomStatus] = Field(default_factory=list)
     write_color_to_excel: bool = True
+    # Doc mau User to tay trong Excel -> coi nhu User override (USER > BOT)
+    read_user_colors: bool = True
+    completed_rule: CompletedRule = Field(default_factory=CompletedRule)
+
+    def status_of_color(self, rgb: str) -> str:
+        """Mau -> trang thai (dao nguoc bang mau). '' neu khong phai mau trang thai."""
+        rgb = (rgb or "").upper()
+        if len(rgb) == 6:
+            rgb = "FF" + rgb
+        for name, color in self.colors.items():
+            if color.upper() == rgb and name != "WHITE":
+                return name
+        for c in self.custom:
+            if c.color.upper() == rgb:
+                return c.name
+        return ""
 
 
 class ExcelWriteCfg(BaseModel):
@@ -217,6 +250,7 @@ class Settings(BaseModel):
     scheduler: SchedulerCfg = Field(default_factory=SchedulerCfg)
     deadlines: DeadlinesCfg = Field(default_factory=DeadlinesCfg)
     container: ContainerCfg = Field(default_factory=ContainerCfg)
+    shipment: ShipmentCfg = Field(default_factory=ShipmentCfg)
     status: StatusCfg = Field(default_factory=StatusCfg)
     excel_write: ExcelWriteCfg = Field(default_factory=ExcelWriteCfg)
     notification: NotificationCfg = Field(default_factory=NotificationCfg)

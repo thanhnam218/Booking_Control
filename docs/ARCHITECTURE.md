@@ -37,10 +37,10 @@ Normalize Data              date / decimal / flag / ship mode
 Validate ──── Invalid ────► Exception Center (EX001, EX004, EX011)
    │
    ▼
-Identify Shipment           ShipmentKey = sha256(owner|NO|JO|ExFtyDate)
+Identify Shipment           ShipmentKey = sha256(owner|JO|ExFtyDate)  (NO la cong thuc)
    │                        trùng key → EX003, không tạo bản ghi trùng
    ▼
-Group NO / JO / INV         GroupKey theo Buyer Rule (by_no_exfty | by_no | by_exfty)
+Group NO / JO / INV         GroupKey: NO -> BOOKING NO -> tung JO (theo Buyer Rule)
    │
    ▼
 Apply Buyer Rule            CO, CO Form, container rule, site, declaration rule
@@ -67,7 +67,7 @@ Check File Version
    ├── Locked  → retry 30/60/120s → Pending Queue (EX006)
    │
    ▼
-Backup → Update Excel (atomic) → Verify
+Backup → Update Excel (LOSSLESS + atomic) → Verify
    │
    ▼
 Audit Log → WAIT NEXT SCAN
@@ -96,6 +96,7 @@ src/booking_bot/
 │   ├── detector.py         Nhận diện sheet Follow Up + dòng header
 │   ├── reader.py           Đọc workbook → CanonicalRow (đã chuẩn hóa)
 │   ├── writer.py           UPSERT an toàn + tô màu + conflict detection
+│   ├── xlsx_patch.py       ★ Ghi lossless: sửa XML trực tiếp, giữ nguyên mọi thứ khác
 │   ├── locking.py          Phát hiện file bị khóa, retry, ghi atomic
 │   └── backup.py           Version token, hash, backup, rollback
 │
@@ -171,17 +172,19 @@ SQLite mặc định (WAL mode). Nhiều user dùng chung → đổi `database.u
 
 ---
 
-## 5. Sáu quyết định thiết kế quan trọng
+## 5. Bảy quyết định thiết kế quan trọng
 
 ### 5.1 ShipmentKey thay vì JO
 
 ```python
-shipment_key = sha256(f"{owner}|{NO}|{JO}|{ExFtyDate}")
+shipment_key = sha256(f"{owner}|{JO}|{ExFtyDate}")
 ```
 
 Một JO tách thành 2 ngày xuất là **hai lô hàng**, mỗi lô có deadline, container và trạng thái riêng. Dùng JO làm khóa sẽ khiến lô thứ hai ghi đè lô thứ nhất.
 
-**Ngoại lệ đã xử lý:** khi `ExFtyDate` của **cùng một dòng Excel** thay đổi, Bot nhận ra qua vị trí dòng (`file + sheet + row`) cộng với `NO` và `JO` không đổi → coi là **cùng một lô bị dời lịch**, đổi khóa và tính lại deadline, không tạo lô mới.
+**Vì sao không có NO trong khóa** — quyết định sau khi xem file Follow Up thật: cột NO là công thức `=IF(LEFT(M2,4)="TEGV",RIGHT(M2,5)-2108,"")`, trống cho đến khi có invoice. Nếu NO nằm trong khóa, lúc invoice xuất hiện lô hàng sẽ bị coi là lô mới. NO chỉ dùng để **gom lô**.
+
+**Ngoại lệ đã xử lý:** khi `ExFtyDate` của **cùng một dòng Excel** thay đổi, Bot nhận ra qua vị trí dòng (`file + sheet + row`) cộng với `JO` không đổi → coi là **cùng một lô bị dời lịch**, đổi khóa và tính lại deadline, không tạo lô mới.
 
 ### 5.2 GroupKey tách khỏi ShipmentKey
 
@@ -221,6 +224,34 @@ Sheet detection và header mapping đều trả về **điểm số**, không ph
 ```
 
 Bot không bao giờ tự map mơ hồ. Sau khi User xác nhận, quyết định đó được lưu và ưu tiên tuyệt đối.
+
+### 5.7 Ghi Excel lossless
+
+Đây là quyết định quan trọng nhất được đưa ra **sau khi thử trên file Follow Up thật** (1 sheet, 47 cột, 33 external link, 1495 defined name, 1 comment, thiết lập in). Đo thực tế — mở rồi lưu lại bằng openpyxl:
+
+| | Trước | Sau openpyxl |
+|---|---|---|
+| Cột NO (công thức) đọc lại | số NO | **`None`** — mất giá trị tính sẵn |
+| Defined name | 1495 | **1493** |
+| Thiết lập in, calcChain | có | **mất** |
+| 33 external link | nguyên | **bị ghi lại** |
+
+Bot chạy lần hai sẽ đọc NO = trống → mọi lô mất số folder. Vì vậy `excel/xlsx_patch.py` mở file như một gói zip và chỉ sửa đúng:
+
+```
+xl/styles.xml              thêm fill / xf mới (tái sử dụng nếu đã có)
+xl/worksheets/sheetN.xml   thuộc tính s="" của ô cần tô, hoặc giá trị ô cần ghi
+xl/workbook.xml            chỉ khi có công thức mới (bật fullCalcOnLoad)
+```
+
+Kết quả trên chính file thật sau 2 lần Bot ghi: **79/81 part giống từng byte**, NO vẫn đọc đúng, công thức, merge, comment, 1495 defined name còn nguyên.
+
+Quy tắc đi kèm:
+- **Không bao giờ ghi đè ô công thức** — `set_value()` trả `False`
+- Dòng mới trong file đích: **kéo công thức** từ dòng mẫu (dịch tham chiếu như Excel fill-down); cột mà dòng mẫu dùng công thức thì Bot không ghi giá trị của nó vào
+- Style mới được **dedup** → chạy 1000 lần `styles.xml` không phình
+- Không có ô nào đổi → **không đụng vào file** (mtime giữ nguyên)
+- openpyxl chỉ dùng để **đọc**
 
 ---
 

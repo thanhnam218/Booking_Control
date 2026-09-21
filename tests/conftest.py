@@ -61,6 +61,7 @@ def workspace(tmp_path, field_mapping_cfg, buyer_cfg, today) -> Settings:
     name_map = {
         "F01-A": "FollowUp_UserA.xlsx",
         "F01-B": "FollowUp_UserB.xlsx",
+        "F01-C": "FollowUp_UserC_CauTrucThat.xlsx",
         "F02": "WEEKLY_PLANNING_2026.xlsx",
         "F03": "CUSTOM_CODE.xlsx",
         "F04": "MM_DAILY_PLANNING_SEP_2026_GV.xlsx",

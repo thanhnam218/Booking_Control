@@ -62,7 +62,7 @@ Trước khi đụng vào file thật, kiểm tra Bot hoạt động đúng:
 .\scripts\run.bat scan --dry-run
 ```
 
-Kết quả mong đợi: 2 file, 5 sheet Follow Up, ~24 lô hàng, phân bổ đủ các màu trạng thái.
+Kết quả mong đợi: 3 file, 6 sheet Follow Up, ~37 lô hàng, đủ các màu trạng thái. File `FollowUp_UserC_CauTrucThat.xlsx` có đúng cấu trúc 47 cột của file thật.
 
 ---
 
@@ -94,6 +94,30 @@ files:
 | Dùng `/` hoặc `\\` | `C:/Users/...` hoặc `C:\\Users\\...` — **một** dấu `\` sẽ lỗi |
 | Có dấu cách | vẫn viết bình thường, YAML chấp nhận khi có dấu `"` bao ngoài |
 | Có dấu tiếng Việt | được, file `config.yaml` lưu UTF-8 |
+
+### File Follow Up theo cấu trúc thật (47 cột)
+
+```yaml
+  - id: "F01-NAM"
+    role: "follow_up"
+    path: "C:/Users/nam/OneDrive - Cong ty/Follow Up - Nam.xlsx"
+    owner: "nam"
+    write: true
+    color_skip_columns: ["A"]    # cột NO là công thức, đang tô vàng -> Bot không tô đè
+```
+
+Rồi thêm **buyer thật** vào `config/buyer_rules.yaml` (file này không đưa lên GitHub). Buyer nào thiếu, lần quét đầu Bot sẽ báo `EX008` kèm đúng tên — ví dụ:
+
+```yaml
+  - code: "MA_BUYER"            # thay bằng mã buyer thật trong cột BUYER
+    canonical_name: "MA_BUYER"
+    co_required: true
+    co_form: "VK"                # CO FORM trong file vẫn được ưu tiên nếu có
+    shipment_group: "by_no_exfty"
+    declaration_rule: "one_per_shipment"
+```
+
+`bookingbot check` sẽ in thêm: file có bao nhiêu external link / defined name / công thức, cột nào là cột công thức, ô nào đang merge — để bạn biết Bot "nhìn" file thế nào trước khi cho ghi.
 
 ### OneDrive / SharePoint
 

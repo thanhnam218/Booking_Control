@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "booking-deadline-bot"
-version = "1.0.0"
+version = "1.1.0"
 description = "Phan mem tu dong quan ly deadline booking xuat khau - quet Excel Follow Up, tinh trang thai booking, phan bo container, nhac deadline va cap nhat cac file Planning."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -19,6 +19,7 @@ classifiers = [
 
 dependencies = [
     "openpyxl>=3.1.2",
+    "lxml>=5.0.0",
     "SQLAlchemy>=2.0.25",
     "pydantic>=2.5.0",
     "PyYAML>=6.0.1",

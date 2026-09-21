@@ -72,6 +72,8 @@ def check(config: str = typer.Option(None, "--config", "-c")):
     from .excel.detector import detect_workbook
     from .excel.locking import check_lock
     from .excel.mapping import HeaderMapper
+    from .excel.reader import read_workbook
+    from .excel.xlsx_patch import inspect_package
 
     engine = _boot(config, console_log=False)
     s = engine.settings
@@ -90,6 +92,18 @@ def check(config: str = typer.Option(None, "--config", "-c")):
             ("R" if f.read else "") + ("W" if f.write else ""),
         )
     console.print(t)
+
+    t3 = Table(title="Cau truc file (Bot ghi LOSSLESS - chi doi o can doi)")
+    for c in ("ID", "Part", "External link", "Defined name", "Cong thuc", "Comment", "openpyxl se lam mat"):
+        t3.add_column(c)
+    for f in s.files:
+        p = s.resolve_path(f.path)
+        if not p.exists():
+            continue
+        rep = inspect_package(p)
+        t3.add_row(f.id, str(rep.parts), str(rep.external_links), str(rep.defined_names),
+                   str(rep.formulas), str(rep.comments), "; ".join(rep.openpyxl_would_lose) or "-")
+    console.print(t3)
 
     mapper = HeaderMapper(engine.dictionary)
     for f in s.files_by_role("follow_up"):
@@ -116,6 +130,17 @@ def check(config: str = typer.Option(None, "--config", "-c")):
                                   + ", ".join(det.header_map.unmatched_headers[:12]))
         finally:
             wb.close()
+
+        res = read_workbook(p, f.id, engine.dictionary, owner_user=f.owner)
+        for sr in res.sheets:
+            for fc in sr.formula_columns:
+                console.print(f"  [cyan]Cot cong thuc[/] {fc.column} ({fc.field}): {fc.pattern} "
+                              f"- {fc.formula_rows} dong")
+            if sr.merged_ranges:
+                console.print(f"  [cyan]O merge[/]: {', '.join(sr.merged_ranges[:10])}")
+            n_formula_issue = sum(1 for r in sr.rows for i in r.issues if i.get("code") == "EX013")
+            if n_formula_issue:
+                console.print(f"  [red]{n_formula_issue} van de cong thuc[/] (go de / thieu) - xem khi scan")
 
     console.print("\n[dim]Cot chua map khong lam Bot loi - chi la Bot khong dung den. "
                   "Neu do la cot quan trong, them alias vao config/field_mapping.yaml.[/]")

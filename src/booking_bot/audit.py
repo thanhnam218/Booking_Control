@@ -24,6 +24,8 @@ EX_CODES = {
     "EX010": "Header Excel thay doi - mapping khong khop",
     "EX011": "Truong bat buoc bi trong",
     "EX012": "Khong ghi duoc file dich",
+    "EX013": "Cong thuc Excel bi go de / thieu / khong khop",
+    "EX014": "CONT TYPE User book khong du cho hoac khong doc duoc",
 }
 
 

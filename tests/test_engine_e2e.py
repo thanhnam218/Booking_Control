@@ -46,8 +46,8 @@ def target_rows(path, sheet):
 
 def test_scan_reads_all_follow_up_sheets(scanned):
     _, res = scanned
-    assert res.files_scanned == 2
-    assert res.sheets_scanned == 5      # ABC, XYZ, IKEA, SAMSUNG, DEF
+    assert res.files_scanned == 3
+    assert res.sheets_scanned == 6      # ABC, XYZ, IKEA, SAMSUNG, DEF + sheet cau truc that
     assert res.shipments_total >= 20
     assert not res.errors
 

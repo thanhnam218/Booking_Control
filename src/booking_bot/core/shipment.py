@@ -1,11 +1,18 @@
 """Shipment Identification & Grouping (SRS muc 10-13, DMS muc 8-12).
 
 Diem cot loi cua kien truc: JO KHONG phai khoa duy nhat.
-  ShipmentKey = sha256(owner | ShipmentNo | JO | ExFtyDate)
+  ShipmentKey = sha256(owner | JO | ExFtyDate)
   -> cung JO nhung khac ExFtyDate = 2 shipment khac nhau (JO tach lam 2 ngay xuat).
-  -> cung NO + JO + ExFtyDate + cung INV = nghi ngo duplicate -> Exception Center.
+  -> cung JO + ExFtyDate + cung INV = nghi ngo duplicate -> Exception Center.
+
+Tai sao KHONG dua NO vao khoa (quyet dinh sau khi xem file that):
+  NO trong Follow Up la CONG THUC tinh tu INVOICE:
+      =IF(LEFT(M2,4)="TEGV",RIGHT(M2,5)-2108,"")
+  -> truoc khi xuat invoice, NO trong. Neu NO nam trong khoa thi luc co invoice
+     lo hang se bi coi la lo MOI, mat lich su. NO chi dung de GOM LO.
 
 GroupKey dung de gom nhieu dong thanh 1 lo khi tinh container / dat booking chung.
+Thu tu uu tien khi gom:  NO  ->  BOOKING NO  ->  tung JO rieng.
 """
 
 from __future__ import annotations
@@ -13,20 +20,22 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ..excel.reader import CanonicalRow
 from .buyer_rules import BuyerRule
 from .normalize import clean_text, norm_key, to_canonical_date
 
+if TYPE_CHECKING:  # core/ khong duoc phu thuoc excel/ luc chay (tranh vong import)
+    from ..excel.reader import CanonicalRow
 
-def shipment_key(owner: str, shipment_no: Any, jo: Any, exfty: dt.date | None) -> str:
-    parts = [
-        norm_key(owner),
-        norm_key(shipment_no),
-        norm_key(jo),
-        to_canonical_date(exfty),
-    ]
+
+def shipment_key(
+    owner: str, shipment_no: Any, jo: Any, exfty: dt.date | None, include_no: bool = False
+) -> str:
+    """Khoa lo hang. Mac dinh = owner + JO + ExFtyDate (NO la cong thuc, xuat hien muon)."""
+    parts = [norm_key(owner), norm_key(jo), to_canonical_date(exfty)]
+    if include_no:
+        parts.insert(1, norm_key(shipment_no))
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:40]
 
 
@@ -41,21 +50,32 @@ def group_key(row_like: dict[str, Any], rule: BuyerRule) -> str:
 
     by_no_exfty : NO + ExFtyDate  (mac dinh)
     by_no       : NO
+    by_booking  : BOOKING NO
     by_exfty    : Buyer + ExFtyDate  -> gom moi JO cung ngay xuat lai
     manual      : moi dong 1 lo, User tu gom
+
+    Khi che do can NO ma NO con trong (chua co invoice):
+        -> gom theo BOOKING NO neu co (1 booking = 1 bo container)
+        -> khong co ca hai: moi JO 1 nhom rieng, KHONG gom bua
     """
     buyer = norm_key(rule.code)
     no = norm_key(row_like.get("ShipmentNo"))
+    booking = norm_key(row_like.get("BookingNo"))
     exfty = to_canonical_date(row_like.get("ExFtyDate"))
     jo = norm_key(row_like.get("JO"))
     mode = rule.shipment_group
 
-    if mode == "by_no":
+    if mode in ("by_no", "by_no_exfty") and not no:
+        mode = "by_booking" if booking else "manual"
+
+    if mode == "by_booking":
+        raw = f"{buyer}|BKG:{booking}" if booking else f"{buyer}|MANUAL:{jo}:{exfty}"
+    elif mode == "by_no":
         raw = f"{buyer}|NO:{no}"
     elif mode == "by_exfty":
         raw = f"{buyer}|EXFTY:{exfty}"
     elif mode == "manual":
-        raw = f"{buyer}|MANUAL:{no}:{jo}:{exfty}"
+        raw = f"{buyer}|MANUAL:{jo}:{exfty}"
     else:
         raw = f"{buyer}|NO:{no}|EXFTY:{exfty}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
@@ -97,6 +117,7 @@ def build_candidates(
     rows: list[CanonicalRow],
     resolve_buyer,
     owner_default: str = "",
+    include_no: bool = False,
 ) -> tuple[list[ShipmentCandidate], list[dict[str, Any]]]:
     """Tao danh sach shipment tu cac dong Excel + phat hien duplicate (SRS muc 13).
 
@@ -113,7 +134,7 @@ def build_candidates(
         rule = resolve_buyer(buyer_raw)
 
         key = shipment_key(owner, row.values.get("ShipmentNo"), row.values.get("JO"),
-                           row.values.get("ExFtyDate"))
+                           row.values.get("ExFtyDate"), include_no=include_no)
         gkey = group_key(row.values, rule)
 
         cand = ShipmentCandidate(key=key, group=gkey, row=row, buyer_rule=rule,
@@ -142,9 +163,9 @@ def build_candidates(
                     "source_row": row.row_index,
                     "value": f"NO={cand.shipment_no} JO={cand.jo} ExFty={to_canonical_date(cand.exfty)}",
                     "reason": (
-                        "Trung hoan toan NO + JO + ExFtyDate + Invoice -> kha nang duplicate that su"
+                        "Trung hoan toan JO + ExFtyDate + Invoice -> kha nang duplicate that su"
                         if same_inv
-                        else "Trung NO + JO + ExFtyDate nhung Invoice khac -> can User xac nhan"
+                        else "Trung JO + ExFtyDate nhung Invoice khac -> can User xac nhan"
                     ),
                     "suggested_action": f"Kiem tra dong {prev.row.row_index} va {row.row_index} cua sheet {row.sheet}",
                     "dedup_key": f"DUP:{key}",

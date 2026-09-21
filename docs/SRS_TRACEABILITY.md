@@ -192,3 +192,37 @@ SRS mục 64 nêu rõ những điểm chỉ chốt được sau khi xem 5 file E
 | Buyer Rule thật (CO, Form, grouping) | 5 buyer mẫu | `config/buyer_rules.yaml` |
 
 Quy trình chuyển từ demo sang thật: [DATA_MAPPING.md § 11](DATA_MAPPING.md#11-điều-chỉnh-theo-file-thật).
+
+---
+
+## 15. Bổ sung sau khi đối chiếu file Follow Up thật
+
+SRS mục 64 yêu cầu chốt lại Follow Up khi có file thật. Những điểm đã chốt và kiểm chứng:
+
+| Phát hiện trên file thật | Cài đặt | Test (`test_real_structure.py`) |
+|---|---|---|
+| 47 cột, header có xuống dòng (`EX-FACT\nDATE`) | `field_mapping.yaml` — 53 field | `test_all_real_headers_map_with_full_confidence` |
+| `GO`, `CDF AMOUNT`, `Booking date`, `CO NO`, `CONT` dễ map nhầm | alias tường minh cho từng cột | `test_no_dangerous_mis_mapping` (6 case) |
+| NO là công thức từ INVOICE | `derived_fields` + khóa không chứa NO | `test_derive_matches_excel_formula` · `test_key_survives_invoice_arriving_later` |
+| Công thức có thể bị gõ đè / thiếu ở dòng mới | `reader._check_formulas` → `EX013` | `test_overwritten_formula_is_flagged` · `test_missing_formula_flagged_and_no_derived_from_invoice` |
+| File lưu bởi công cụ khác mất giá trị công thức | phát hiện cấp sheet + tự tính NO | `test_stale_formula_cache_detected_and_no_rebuilt` |
+| CONT TYPE merge `D2:D5` cho cả nhóm | `reader._merged_map` + `origin()` | `test_merged_cont_type_is_shared_by_group` · `test_split_jo_same_invoice_is_one_container_group` |
+| CONT TYPE là lựa chọn của User | `parse_container_type` + kiểm đủ tải → `EX014` | `test_parse_user_container_type` · `test_user_container_shortage_is_critical` |
+| MODE ghi `S` / `A` | `parse_ship_mode` trong reader | `test_ship_mode_letters_are_normalized` |
+| Không có cột HOLD / CANCEL | `remark_keywords` | `test_hold_from_remark` · `test_remark_keyword_respects_negation` |
+| CO FORM thật có trong file | ưu tiên hơn Buyer Rule | `test_co_form_taken_from_file` |
+| Có CONT + SEAL + ETD → biết khi nào xuất xong | `status._check_completed` | `test_completed_needs_cont_seal_and_etd` |
+| "Xuất 1 nửa, mai đóng tiếp" | `engine._apply_group_partial` | `test_group_partial_when_half_loaded` |
+| Trạng thái đang được đánh dấu bằng màu tay | `engine._sync_color_override` | `test_user_paints_red_then_back` · `test_unknown_user_color_is_left_alone` |
+| **openpyxl làm mất giá trị công thức, defined name, thiết lập in** | `excel/xlsx_patch.py` ghi lossless | `test_color_write_is_lossless` · `test_color_write_twice_is_noop` · `test_styles_do_not_grow_on_repeated_runs` |
+| Không được ghi đè công thức ở file đích | `set_value` trả `False`, kéo công thức cho dòng mới | `test_formula_cell_never_overwritten` · `test_target_insert_extends_formulas_and_keeps_existing` |
+
+### Kiểm chứng trên chính file thật (không đưa lên repo)
+
+| | Kết quả |
+|---|---|
+| Cột nhận diện | 46/47, độ tin cậy 100% (`SQ` chưa rõ nghĩa) |
+| 4 dòng · 1 NO · CONT TYPE `1x20` merge · 15.14 CBM | 1 nhóm, `USER_CONFIRMED`, khớp đề xuất Bot `1x20ST` |
+| Giả lập ngày T-7 | `GREEN` · ghi Weekly Planning / Custom Code / MM-Daily 4 dòng, CO = Yes, CO FORM = VK, HS CODE đúng |
+| Ngày hiện tại (ETD đã qua) | `COMPLETED`, không phát thông báo thừa, không chèn lô cũ vào Lịch xuất |
+| Sau 2 lần Bot tô màu | 79/81 part giống từng byte; NO, công thức, 1495 defined name, comment, merge nguyên vẹn |
