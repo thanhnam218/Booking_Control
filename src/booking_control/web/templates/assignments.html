@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Phân công lô hàng</h2>
+<p class="page-sub">Giao / giao lại / giao hàng loạt theo Buyer, Forwarder, EX-FACT, Mode. Mỗi lần giao đều lưu lịch sử và báo cho người được giao.
+  Automation chỉ tự giao lô <b>mới chưa có người phụ trách</b> — không bao giờ đổi người bạn đã giao.</p>
+
+<div class="card">
+  <h3>Team Workload</h3>
+  <table>
+    <thead><tr><th>Người phụ trách</th><th class="right">Đang theo dõi</th><th class="right">Quá hạn</th><th class="right">≤ 3 ngày</th>
+      <th class="right">Chưa book</th><th class="right">Hold</th><th>Tải</th><th></th></tr></thead>
+    <tbody>
+    {% set maxv = (team|map(attribute='total')|max) if team else 1 %}
+    {% for u in team %}
+      <tr>
+        <td>{{ u.label }} {% if u.role %}<span class="tag">{{ role_labels.get(u.role, u.role) }}</span>{% endif %}</td>
+        <td class="right"><b>{{ u.total }}</b></td>
+        <td class="right {{ 'late' if u.overdue }}">{{ u.overdue }}</td>
+        <td class="right {{ 'soon' if u.due3 }}">{{ u.due3 }}</td>
+        <td class="right">{{ u.white }}</td>
+        <td class="right">{{ u.hold }}</td>
+        <td style="width:160px"><div class="bar"><i style="width:{{ (100 * u.total / (maxv or 1))|round|int }}%"></i></div></td>
+        <td><a href="/followup?assigned={{ u.user or '__none__' }}">Mở lưới</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3>Giao hàng loạt theo điều kiện</h3>
+  <form id="bulk" class="inline">
+    <select name="buyer"><option value="">Mọi buyer</option>{% for b in opts.buyers %}<option>{{ b }}</option>{% endfor %}</select>
+    <select name="forwarder"><option value="">Mọi forwarder</option>{% for f in opts.forwarders %}<option>{{ f }}</option>{% endfor %}</select>
+    <select name="mode"><option value="">Mọi mode</option>{% for m in opts.modes %}<option>{{ m }}</option>{% endfor %}</select>
+    <label class="muted">EX-FACT từ <input type="date" name="date_from"></label>
+    <label class="muted">đến <input type="date" name="date_to"></label>
+    <label class="muted"><input type="checkbox" name="only_unassigned" value="1" checked> Chỉ lô chưa phân công</label>
+    <span>&rarr;</span>
+    <select name="to_user" required><option value="">— Giao cho —</option>{% for n, l in users %}<option value="{{ n }}">{{ l }}</option>{% endfor %}</select>
+    <select name="kind"><option value="PRIMARY">Phụ trách chính</option><option value="BACKUP">Dự phòng</option></select>
+    <button type="submit">Giao</button>
+    <span id="bulk-msg" class="muted"></span>
+  </form>
+</div>
+
+<div class="two">
+  <div class="card scroll-x">
+    <h3>Chưa phân công ({{ unassigned|length }})</h3>
+    <table>
+      <thead><tr><th>JO</th><th>Buyer</th><th>EX-FACT</th><th>Mode</th><th>Forwarder</th><th>File của</th><th>Status</th></tr></thead>
+      <tbody>
+      {% for r in unassigned %}
+        <tr><td><a class="mono" href="/shipments/{{ r.code }}">{{ r.jo or r.code }}</a></td><td>{{ r.buyer }}</td>
+          <td class="mono">{{ r.exfty.strftime('%d/%m') if r.exfty else '-' }}</td><td>{{ r.mode }}</td><td>{{ r.forwarder }}</td>
+          <td class="muted">{{ r.owner }}</td><td><span class="pill {{ r.status }}">{{ r.status }}</span></td></tr>
+      {% else %}<tr><td colspan="7" class="muted">Tất cả lô đã có người phụ trách</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card scroll-x">
+    <h3>Lịch sử gần đây</h3>
+    <table><tbody>
+    {% for h in history %}
+      <tr><td class="mono nowrap">{{ h.ts.strftime('%d/%m %H:%M') }}</td><td><a class="mono" href="/shipments/{{ h.code }}">{{ h.code }}</a></td>
+        <td>{{ h.from or '—' }} &rarr; <b>{{ h.to or '(bỏ)' }}</b> <span class="tag">{{ h.kind }}</span></td><td class="muted">{{ h.by }} · {{ h.method }}</td></tr>
+    {% else %}<tr><td class="muted">Chưa có</td></tr>{% endfor %}
+    </tbody></table>
+    {% if rules %}
+    <h3 style="margin-top:14px">Rule tự giao (config.yaml &gt; assignment.rules)</h3>
+    <table><tbody>{% for r in rules %}<tr><td>{{ r.buyer|join(', ') or '*' }} / {{ r.forwarder|join(', ') or '*' }} / {{ r.mode|join(', ') or '*' }}</td><td>&rarr; <b>{{ r.user }}</b>{% if r.backup %} (dự phòng {{ r.backup }}){% endif %}</td></tr>{% endfor %}</tbody></table>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById("bulk").addEventListener("submit", function (e) {
+  e.preventDefault();
+  var fd = new FormData(e.target), f = {};
+  ["buyer", "forwarder", "mode", "date_from", "date_to"].forEach(function (k) { if (fd.get(k)) f[k] = fd.get(k); });
+  if (fd.get("only_unassigned")) f.assigned = "__none__";
+  var msg = document.getElementById("bulk-msg");
+  if (!window.confirm("Giao tất cả lô khớp điều kiện cho " + fd.get("to_user") + "?")) return;
+  BC.api("/api/followup/assign", { by_filter: f, to_user: fd.get("to_user"), kind: fd.get("kind") })
+    .then(function (r) { msg.textContent = "Đã giao " + r.changed + " lô (" + r.unchanged + " lô không đổi)"; setTimeout(function () { location.reload(); }, 900); })
+    .catch(function (err) { msg.textContent = "Lỗi: " + err.message; });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf" content="{{ csrf }}">
+<title>{% block title %}{{ app_name }}{% endblock %}</title>
+<link rel="stylesheet" href="/static/app.css">
+{% block head %}{% endblock %}
+</head>
+<body>
+{% if me %}
+<div class="layout">
+<aside>
+  <h1>{{ app_name }}</h1>
+  <p class="sub">Export Shipment &amp; Booking</p>
+  <nav>
+    <a href="/" class="{{ 'on' if nav=='dashboard' }}"><span>Tổng quan</span></a>
+    <a href="/followup" class="{{ 'on' if nav=='followup' }}"><span>Follow Up (lưới Excel)</span></a>
+    <a href="/shipments" class="{{ 'on' if nav in ['shipments','shipment_detail'] }}"><span>Lô hàng</span></a>
+    <a href="/exceptions" class="{{ 'on' if nav=='exceptions' }}"><span>Exception Center</span></a>
+    <a href="/notifications" class="{{ 'on' if nav=='notifications' }}"><span>Thông báo</span></a>
+    {% if me.can('shipments.assign') or me.can('import.excel') or me.can('automation.run') or me.can('audit.view') %}
+    <div class="sec">Quản lý</div>
+    {% if me.can('shipments.assign') %}<a href="/assignments" class="{{ 'on' if nav=='assignments' }}"><span>Phân công</span></a>{% endif %}
+    {% if me.can('import.excel') %}<a href="/import" class="{{ 'on' if nav=='import' }}"><span>Nhập Excel</span></a>{% endif %}
+    {% if me.can('automation.run') %}<a href="/automation" class="{{ 'on' if nav in ['automation','dryrun'] }}"><span>Automation</span></a>{% endif %}
+    {% if me.can('audit.view') %}<a href="/audit" class="{{ 'on' if nav=='audit' }}"><span>Audit Log</span></a>{% endif %}
+    {% endif %}
+    {% if me.is_admin %}
+    <div class="sec">Quản trị</div>
+    <a href="/admin/users" class="{{ 'on' if nav=='users' }}"><span>Người dùng</span></a>
+    <a href="/mapping" class="{{ 'on' if nav=='mapping' }}"><span>Mapping</span></a>
+    <a href="/buyers" class="{{ 'on' if nav=='buyers' }}"><span>Buyer / Forwarder</span></a>
+    <a href="/backups" class="{{ 'on' if nav=='backups' }}"><span>Backup</span></a>
+    <a href="/settings" class="{{ 'on' if nav=='settings' }}"><span>Cài đặt</span></a>
+    {% endif %}
+  </nav>
+</aside>
+<main>
+  <div class="topbar">
+    {% if state %}
+      <span class="muted" style="font-size:12px"><span class="dot {{ 'pause' if state.paused else ('on' if state.running else 'off') }}"></span>
+        Automation {{ 'tạm dừng' if state.paused else ('đang chạy' if state.running else 'đang dừng') }}
+        &middot; lần quét: {{ state.last_scan.strftime('%d/%m %H:%M') if state.last_scan else '--' }}
+        &middot; kế tiếp: {{ state.next_scan.strftime('%d/%m %H:%M') if state.next_scan else '--' }}</span>
+    {% else %}
+      <span class="muted" style="font-size:12px"><span class="dot off"></span>Automation không chạy trong tiến trình này</span>
+    {% endif %}
+    {% if me.can('automation.run') %}
+      <form method="post" action="/actions/scan" onsubmit="this.querySelector('button').textContent='Đang quét...'">
+        <button type="submit" class="btn-sm">Quét ngay</button>
+      </form>
+    {% endif %}
+    <div class="who">
+      <a class="bell" href="/notifications" title="Thông báo">&#128276;<b id="bell-count" {% if not unread %}hidden{% endif %}>{{ unread }}</b></a>
+      <a href="/account">{{ me.label }}</a>
+      <span class="role">{{ me.role_label }}</span>
+      <form method="post" action="/logout"><button class="ghost btn-sm" type="submit">Đăng xuất</button></form>
+    </div>
+  </div>
+  {% block content %}{% endblock %}
+  <p class="muted" style="font-size:11px;margin-top:26px">
+    {{ app_name }} &middot; {{ now.strftime('%d/%m/%Y %H:%M') }} &middot;
+    USER &gt; AUTOMATION &middot; hệ thống tự động không ghi đè dữ liệu bạn đã sửa
+  </p>
+</main>
+</div>
+{% else %}
+  {% block public %}{% endblock %}
+{% endif %}
+<script src="/static/app.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

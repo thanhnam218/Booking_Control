@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Buyer Rule</h2>
+<p class="page-sub">Sua trong <span class="mono">config/buyer_rules.yaml</span> roi bam "Quet ngay" de nap lai.</p>
+
+<div class="card">
+<table>
+  <thead><tr>
+    <th>Code</th><th>Ten chuan</th><th>Alias</th><th>CO</th><th>CO Form</th>
+    <th>Container Rule</th><th>Gom lo</th><th>Invoice</th><th>To khai</th><th>Co so</th><th>Nguong LCL</th>
+  </tr></thead>
+  <tbody>
+  {% for r in rules %}
+    <tr>
+      <td class="mono"><b>{{ r.code }}</b></td>
+      <td>{{ r.canonical_name }}</td>
+      <td class="muted">{{ r.aliases|join(', ') }}</td>
+      <td>{{ 'Yes' if r.co_required else 'No' }}</td>
+      <td>{{ r.co_form or '-' }}</td>
+      <td class="mono">{{ r.container_rule }}</td>
+      <td class="mono">{{ r.shipment_group }}</td>
+      <td class="mono">{{ r.invoice_rule }}</td>
+      <td class="mono">{{ r.declaration_rule }}</td>
+      <td>{{ r.site or '-' }}</td>
+      <td class="mono">{{ r.lcl_threshold_cbm if r.lcl_threshold_cbm is not none else '-' }}</td>
+    </tr>
+  {% else %}<tr><td colspan="11" class="muted">Chua co buyer nao</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+
+<div class="two">
+<div class="card scroll-x">
+  <h3>Buyer - Forwarder Rule</h3>
+  <p class="muted" style="font-size:12px">buyer_rules.yaml &gt; forwarder_rules. 1 rule khớp = AUTO_ASSIGNED, nhiều rule = NEED_CONFIRM, không có = NOT_ASSIGNED.</p>
+  <table><thead><tr><th>Forwarder</th><th>Buyer</th><th>Mode</th><th>Dest</th><th>Port</th></tr></thead><tbody>
+  {% for r in fw_rules %}<tr><td><b>{{ r.forwarder }}</b></td><td>{{ r.buyer|join(', ') or '*' }}</td><td>{{ r.mode|join(', ') or '*' }}</td>
+    <td>{{ r.dest|join(', ') or '*' }}</td><td>{{ r.port|join(', ') or '*' }}</td></tr>
+  {% else %}<tr><td colspan="5" class="muted">Chưa có rule forwarder</td></tr>{% endfor %}
+  </tbody></table>
+</div>
+<div class="card scroll-x">
+  <h3>Rule tự phân công</h3>
+  <p class="muted" style="font-size:12px">config.yaml &gt; assignment.rules — chỉ áp dụng cho lô mới chưa có người phụ trách.</p>
+  <table><thead><tr><th>Buyer</th><th>Forwarder</th><th>Mode</th><th>Giao cho</th></tr></thead><tbody>
+  {% for r in assign_rules %}<tr><td>{{ r.buyer|join(', ') or '*' }}</td><td>{{ r.forwarder|join(', ') or '*' }}</td><td>{{ r.mode|join(', ') or '*' }}</td>
+    <td><b>{{ r.user }}</b>{% if r.backup %} / {{ r.backup }}{% endif %}</td></tr>
+  {% else %}<tr><td colspan="4" class="muted">Chưa có — lô mới giao cho chủ file Follow Up</td></tr>{% endfor %}
+  </tbody></table>
+</div>
+</div>
+
+<div class="card">
+  <h3>Y nghia cac gia tri</h3>
+  <dl class="kv">
+    <dt>container_rule</dt><dd><span class="mono">standard</span> = Automation tu tinh &middot;
+      <span class="mono">user_review</span> = Automation khong tu chot, luon hoi User &middot;
+      <span class="mono">forced:AC</span> = ep kieu (vd hang AIR) &middot;
+      <span class="mono">lcl_only / fcl_only</span></dd>
+    <dt>shipment_group</dt><dd><span class="mono">by_no_exfty</span> (mac dinh) &middot;
+      <span class="mono">by_no</span> &middot;
+      <span class="mono">by_exfty</span> = gom moi JO cung ngay xuat &middot;
+      <span class="mono">manual</span></dd>
+    <dt>declaration_rule</dt><dd><span class="mono">one_per_shipment</span> &middot;
+      <span class="mono">one_per_invoice</span> &middot; <span class="mono">user_review</span></dd>
+  </dl>
+</div>
+{% endblock %}

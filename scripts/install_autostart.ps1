@@ -1,12 +1,12 @@
 <#
-    TU DONG CHAY BOT KHI DANG NHAP WINDOWS
+    TU DONG CHAY AUTO KHI DANG NHAP WINDOWS
     --------------------------------------
         .\scripts\install_autostart.ps1              # cai (Task Scheduler)
         .\scripts\install_autostart.ps1 -Remove      # go bo
         .\scripts\install_autostart.ps1 -Startup     # dung thu muc Startup thay vi Task Scheduler
 
     Task Scheduler duoc khuyen dung: chay ngay ca khi may vua khoi dong lai,
-    va tu chay lai neu Bot bi tat.
+    va tu chay lai neu Automation bi tat.
 #>
 
 param(
@@ -16,9 +16,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
-$taskName = "BookingDeadlineBot"
-$vbs = Join-Path $root "scripts\start_bot_hidden.vbs"
-$startupLnk = Join-Path ([Environment]::GetFolderPath("Startup")) "BookingDeadlineBot.lnk"
+$taskName = "BookingControl"
+$vbs = Join-Path $root "scripts\start_server_hidden.vbs"
+$startupLnk = Join-Path ([Environment]::GetFolderPath("Startup")) "BookingControl.lnk"
 
 if ($Remove) {
     try { Unregister-ScheduledTask -TaskName $taskName -Confirm:$false; Write-Host "Da go scheduled task." }
@@ -38,7 +38,7 @@ if ($Startup) {
     $lnk.TargetPath = "wscript.exe"
     $lnk.Arguments = """$vbs"""
     $lnk.WorkingDirectory = $root
-    $lnk.Description = "Booking Deadline Bot"
+    $lnk.Description = "Booking Control"
     $lnk.Save()
     Write-Host "Da tao shortcut trong thu muc Startup:" -ForegroundColor Green
     Write-Host "  $startupLnk"
@@ -53,8 +53,8 @@ $settings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit (New-TimeSpan -Days 0)
 
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger `
-    -Settings $settings -Description "Tu dong quan ly deadline booking xuat khau" -Force | Out-Null
+    -Settings $settings -Description "Booking Control - web noi bo + Automation Engine" -Force | Out-Null
 
 Write-Host "Da dang ky scheduled task '$taskName'." -ForegroundColor Green
-Write-Host "Bot se tu chay moi lan ban dang nhap Windows (icon o khay he thong)."
+Write-Host "He thong se tu chay (an, khong cua so) moi lan ban dang nhap Windows. Mo web: http://127.0.0.1:8765"
 Write-Host "Kiem tra: Task Scheduler > Task Scheduler Library > $taskName"

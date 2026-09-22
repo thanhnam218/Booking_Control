@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Không thực hiện được</h2>
+<div class="flash err">{{ message }}</div>
+<p><a href="javascript:history.back()">&larr; Quay lại</a> &middot; <a href="/">Về trang tổng quan</a></p>
+{% endblock %}
+{% block public %}
+<div class="login-wrap"><div class="card"><div class="flash err">{{ message }}</div><a href="/login">Đăng nhập</a></div></div>
+{% endblock %}

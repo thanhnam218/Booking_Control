@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Nhập file Follow Up</h2>
+<p class="page-sub">Tải lên file Excel Follow Up (đúng hoặc gần đúng khung 47 cột) → hệ thống tự nhận diện sheet &amp; cột → <b>xem trước</b> → bấm Nhập.
+  Nhập lại cùng file cho cùng người phụ trách sẽ <b>cập nhật</b>, không tạo trùng. File gốc không bị sửa.</p>
+{% if error %}<div class="flash err">{{ error }}</div>{% endif %}
+
+<div class="card">
+  <form method="post" action="/import/preview" enctype="multipart/form-data" class="inline">
+    <input type="file" name="file" accept=".xlsx,.xlsm" required>
+    <label class="muted">Người phụ trách các lô trong file
+      <select name="owner" required>{% for u in users %}<option value="{{ u.name }}" {{ 'selected' if owner==u.name }}>{{ u.label }}</option>{% endfor %}</select></label>
+    <button type="submit">Xem trước</button>
+  </form>
+</div>
+
+{% if result %}
+<div class="card">
+  <h3>{{ 'Đã nhập' if applied else 'Xem trước' }}: {{ filename }}</h3>
+  <p>{{ result.sheets }} sheet Follow Up &middot; <b>{{ result.rows }}</b> lô &middot;
+    <b>{{ result.new }}</b> thêm mới &middot; <b>{{ result.update }}</b> cập nhật
+    {% if applied and result.auto_assigned is defined %}&middot; tự phân công {{ result.auto_assigned }}{% endif %}</p>
+  {% for e in result.errors %}<div class="flash err">{{ e }}</div>{% endfor %}
+  {% if not applied and result.rows %}
+  <form method="post" action="/import/apply" class="inline" style="margin-bottom:12px">
+    <input type="hidden" name="token" value="{{ token }}">
+    <input type="hidden" name="owner" value="{{ owner }}">
+    <button type="submit">Nhập {{ result.rows }} lô</button>
+    <span class="muted">Các vấn đề dữ liệu (thiếu ngày, sai công thức...) sẽ vào Exception Center.</span>
+  </form>
+  {% endif %}
+  {% if applied %}<p><a class="btn" href="/followup?assigned={{ owner }}">Mở lưới Follow Up</a></p>{% endif %}
+  <div class="scroll-x"><table>
+    <thead><tr><th>Sheet</th><th>Dòng</th><th>NO</th><th>JO</th><th>EX-FACT</th><th>Buyer</th><th>Thao tác</th></tr></thead>
+    <tbody>{% for p in result.preview %}
+      <tr><td>{{ p.sheet }}</td><td class="mono">{{ p.row }}</td><td class="mono">{{ p.no }}</td><td class="mono">{{ p.jo }}</td>
+        <td class="mono">{{ p.exfty }}</td><td>{{ p.buyer }}</td><td><span class="tag {{ 'web' if p.action=='THEM MOI' else '' }}">{{ p.action }}</span></td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
+{% endblock %}

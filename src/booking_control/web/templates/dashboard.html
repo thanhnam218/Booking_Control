@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{% if me.can('shipments.view_all') %}Tổng quan{% else %}Lô hàng của tôi{% endif %}</h2>
+<p class="page-sub">{{ total }} lô hàng đang theo dõi &middot; {{ exc_count }} exception chưa xử lý
+  &middot; <a href="/followup">Mở lưới Follow Up &rarr;</a></p>
+
+<div class="card">
+  <h3>Theo hạn EX-FACT</h3>
+  <div class="grid tiles">
+    {% for key, label in bucket_labels %}
+    <a class="tile" href="/shipments?bucket={{ key }}" style="border-left-color:{{ '#e53935' if key in ['overdue','today','d1'] else ('#fb8c00' if key in ['d3','d7','hold'] else '#9e9e9e') }};text-decoration:none;color:inherit">
+      <div class="n">{{ buckets.get(key, 0) }}</div>
+      <div class="l">{{ label }}</div>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="grid tiles" style="margin-bottom:16px">
+  {% for key, meta in status_meta.items() %}
+  <a class="tile" href="/shipments?status={{ key }}" style="border-left-color:{{ meta[1] }};text-decoration:none;color:inherit">
+    <div class="n">{{ counts.get(key, 0) }}</div>
+    <div class="l">{{ key }}</div>
+    <div class="d">{{ meta[0] }}</div>
+  </a>
+  {% endfor %}
+  <a class="tile" href="/exceptions" style="border-left-color:var(--red);text-decoration:none;color:inherit">
+    <div class="n">{{ exc_count }}</div>
+    <div class="l">Exception</div>
+    <div class="d">Xem &amp; xử lý</div>
+  </a>
+</div>
+
+{% if team %}
+<div class="card">
+  <h3>Team Workload</h3>
+  <table>
+    <thead><tr><th>Người phụ trách</th><th class="right">Đang theo dõi</th><th class="right">Quá hạn</th>
+      <th class="right">≤ 3 ngày</th><th class="right">Chưa book</th><th class="right">Hold</th><th class="right">Hoàn tất</th><th></th></tr></thead>
+    <tbody>
+    {% for u in team %}
+      <tr>
+        <td>{{ u.label }} {% if u.role %}<span class="tag">{{ role_labels.get(u.role, u.role) }}</span>{% endif %}</td>
+        <td class="right"><b>{{ u.total }}</b></td>
+        <td class="right {{ 'late' if u.overdue }}">{{ u.overdue }}</td>
+        <td class="right {{ 'soon' if u.due3 }}">{{ u.due3 }}</td>
+        <td class="right">{{ u.white }}</td>
+        <td class="right">{{ u.hold }}</td>
+        <td class="right muted">{{ u.completed }}</td>
+        <td><a href="/followup?assigned={{ u.user or '__none__' }}">Xem lưới</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if me.can('shipments.assign') %}<p style="margin:10px 0 0"><a href="/assignments">Phân công / giao lại &rarr;</a></p>{% endif %}
+</div>
+{% endif %}
+
+<div class="two">
+  <div class="card">
+    <h3>Cần xử lý gấp (chưa book / hold / xuất dở)</h3>
+    <table>
+      <thead><tr><th>JO</th><th>Buyer</th><th>EX-FACT</th><th>Hạn</th><th>Phụ trách</th><th>Status</th></tr></thead>
+      <tbody>
+      {% for r in urgent %}
+        <tr>
+          <td><a href="/shipments/{{ r.code }}" class="mono">{{ r.jo or r.code }}</a></td>
+          <td>{{ r.buyer }}</td>
+          <td class="mono">{{ r.exfty.strftime('%d/%m') if r.exfty else '-' }}</td>
+          <td class="{{ 'late' if r.days_left is not none and r.days_left < 7 else 'soon' }} nowrap">{{ r.deadline }}</td>
+          <td>{{ r.assigned_to or '—' }}</td>
+          <td><span class="pill {{ r.status }}">{{ r.status }}</span></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="muted">Không có lô nào cần gấp</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h3>Lịch xuất sắp tới</h3>
+    <table>
+      <thead><tr><th>JO</th><th>Buyer</th><th>EX-FACT</th><th>Hạn</th><th class="right">CBM</th><th>Status</th></tr></thead>
+      <tbody>
+      {% for r in upcoming %}
+        <tr>
+          <td><a href="/shipments/{{ r.code }}" class="mono">{{ r.jo or r.code }}</a></td>
+          <td>{{ r.buyer }}</td>
+          <td class="mono">{{ r.exfty.strftime('%d/%m') if r.exfty else '-' }}</td>
+          <td class="nowrap">{{ r.deadline }}</td>
+          <td class="right mono">{{ '%.1f'|format(r.cbm) if r.cbm else '-' }}</td>
+          <td><span class="pill {{ r.status }}">{{ r.status }}</span></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="muted">Chưa có dữ liệu</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if last_run and me.can('automation.run') %}
+<div class="card">
+  <h3>Lần quét Follow Up gần nhất</h3>
+  <div class="kv">
+    <dt>Thời điểm</dt><dd>{{ last_run.started.strftime('%d/%m/%Y %H:%M:%S') }} ({{ last_run.mode }})</dd>
+    <dt>Kết quả</dt><dd>{{ last_run.files }} file &middot; {{ last_run.sheets }} sheet &middot;
+      {{ last_run.shipments }} lô (mới {{ last_run.new }}, đổi {{ last_run.changed }})</dd>
+    <dt>Thông báo</dt><dd>{{ last_run.notifications }} &middot; Exception: {{ last_run.exceptions }}</dd>
+    {% if last_run.error %}<dt>Lỗi</dt><dd class="sev-CRITICAL">{{ last_run.error }}</dd>{% endif %}
+  </div>
+  <p style="margin:10px 0 0"><a href="/automation">Lịch sử job &rarr;</a></p>
+</div>
+{% endif %}
+{% endblock %}

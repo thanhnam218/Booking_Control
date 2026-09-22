@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Automation</h2>
+<p class="page-sub">Các tác vụ nền chạy trên máy chủ (không có "Bot"): mỗi lần chạy ghi Job ID, giờ bắt đầu / kết thúc, trạng thái, lỗi, số lần thử lại.</p>
+
+<div class="toolbar">
+  <a class="btn ghost" href="/dryrun">Dry Run (xem trước, không ghi file)</a>
+  {% if me.can('automation.pause') and state %}
+    {% if state.paused %}
+      <form method="post" action="/actions/resume"><button type="submit">Chạy tiếp Automation</button></form>
+    {% else %}
+      <form method="post" action="/actions/pause"><button type="submit" class="ghost">Tạm dừng Automation</button></form>
+    {% endif %}
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3>Các job</h3>
+  <table>
+    <thead><tr><th>Job</th><th>Việc làm</th><th>Lần chạy kế tiếp</th><th></th></tr></thead>
+    <tbody>
+    {% for j in jobs %}
+      <tr><td class="mono">{{ j.name }}</td><td>{{ j.title }}</td>
+        <td class="mono">{{ j.next_run.strftime('%d/%m %H:%M') if j.next_run else '—' }}</td>
+        <td><form method="post" action="/actions/job/{{ j.name }}"><button class="btn-sm ghost" type="submit">Chạy ngay</button></form></td></tr>
+    {% else %}
+      <tr><td colspan="4" class="muted">Automation không chạy trong tiến trình web này (chạy bằng <code>bookingctl run</code>).</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card scroll-x">
+  <h3>Lịch sử chạy</h3>
+  <table>
+    <thead><tr><th>ID</th><th>Job</th><th>Kích hoạt</th><th>Bắt đầu</th><th>Kết thúc</th><th>Trạng thái</th><th>Thử lại</th><th>Kết quả / Lỗi</th></tr></thead>
+    <tbody>
+    {% for r in runs %}
+      <tr>
+        <td class="mono">#{{ r.id }}</td><td class="mono">{{ r.job }}</td><td>{{ r.by }}</td>
+        <td class="mono nowrap">{{ r.start.strftime('%d/%m %H:%M:%S') }}</td>
+        <td class="mono nowrap">{{ r.end.strftime('%H:%M:%S') if r.end else '...' }}</td>
+        <td><span class="{{ 'sev-CRITICAL' if r.status=='FAILED' else ('sev-INFO' if r.status=='RUNNING' else '') }}">{{ r.status }}</span></td>
+        <td class="right">{{ r.retry }}</td>
+        <td class="muted" style="max-width:520px">{% if r.error %}<span class="sev-CRITICAL">{{ r.error }}</span>{% else %}
+          {% for k, v in r.summary.items() if k in ['files_scanned','shipments_total','shipments_new','auto_assigned','notifications_sent','exceptions','count','mails','applied','sessions_removed'] %}{{ k }}={{ v }} {% endfor %}{% endif %}</td>
+      </tr>
+    {% else %}<tr><td colspan="8" class="muted">Chưa có lần chạy nào</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

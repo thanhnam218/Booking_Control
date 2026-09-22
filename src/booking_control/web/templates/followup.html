@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Follow Up - {{ app_name }}{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="/static/vendor/jsuites.css">
+<link rel="stylesheet" href="/static/vendor/jspreadsheet.css">
+<link rel="stylesheet" href="/static/followup.css">
+{% endblock %}
+{% block content %}
+<div class="fu-head">
+  <div>
+    <h2>Follow Up</h2>
+    <p class="page-sub">Khung 47 cột giống file Follow Up &middot; sửa trực tiếp, tự lưu &middot;
+      <span class="lg fx">ô công thức</span> <span class="lg manual">đã sửa tay</span> <span class="lg ro">chỉ xem</span>
+      &middot; Ctrl+C / Ctrl+V dán từ Excel &middot; kéo góc ô để điền &middot; Ctrl+Z hoàn tác &middot; nhấp đúp tiêu đề để sắp xếp</p>
+  </div>
+  <div id="save-state" class="save-state">Sẵn sàng</div>
+</div>
+
+<form class="toolbar fu-filter" method="get" action="/followup">
+  <input name="q" value="{{ filters.get('q','') }}" placeholder="JO / NO / PO / Booking...">
+  <select name="buyer"><option value="">Mọi buyer</option>
+    {% for b in buyers %}<option {{ 'selected' if filters.get('buyer')==b }}>{{ b }}</option>{% endfor %}</select>
+  <select name="status"><option value="">Mọi trạng thái</option>
+    {% for k, m in status_meta.items() %}<option value="{{ k }}" {{ 'selected' if filters.get('status')==k }}>{{ k }} - {{ m[0] }}</option>{% endfor %}</select>
+  {% if users %}
+  <select name="assigned"><option value="">Mọi người phụ trách</option>
+    <option value="__none__" {{ 'selected' if filters.get('assigned')=='__none__' }}>(Chưa phân công)</option>
+    {% for u in users %}<option value="{{ u.name }}" {{ 'selected' if filters.get('assigned')==u.name }}>{{ u.label }}</option>{% endfor %}</select>
+  {% endif %}
+  <label class="muted">EX-FACT từ <input type="date" name="date_from" value="{{ filters.get('date_from','') }}"></label>
+  <label class="muted">đến <input type="date" name="date_to" value="{{ filters.get('date_to','') }}"></label>
+  <label class="muted"><input type="checkbox" name="hide_done" value="1" {{ 'checked' if filters.get('hide_done') }}> Ẩn lô đã xong / hủy</label>
+  <button type="submit">Lọc</button>
+  <a href="/followup" class="btn ghost">Bỏ lọc</a>
+</form>
+
+<div class="toolbar fu-actions">
+  {% if me.can('shipments.create') %}<button type="button" id="btn-add">+ Thêm lô hàng</button>{% endif %}
+  {% if me.can('shipments.assign') %}
+    <span class="sep"></span>
+    <select id="assign-user"><option value="">— Giao cho —</option>
+      {% for u in users %}<option value="{{ u.name }}">{{ u.label }}</option>{% endfor %}
+      <option value="__unassign__">(Bỏ phân công)</option></select>
+    <select id="assign-kind"><option value="PRIMARY">Phụ trách chính</option><option value="BACKUP">Dự phòng</option></select>
+    <button type="button" id="btn-assign" class="ghost">Giao các dòng đang chọn</button>
+  {% endif %}
+  {% if me.can('shipments.archive') %}<button type="button" id="btn-archive" class="ghost">Lưu trữ dòng chọn</button>{% endif %}
+  <span class="sep"></span>
+  <a class="btn ghost" id="btn-export-mine" href="/export/followup.xlsx?scope=mine">Xuất Excel lô của tôi</a>
+  {% if me.can('export.all') %}<a class="btn ghost" id="btn-export-filter" href="#">Xuất Excel theo bộ lọc</a>{% endif %}
+  <button type="button" id="btn-reload" class="ghost">Tải lại</button>
+  <span id="row-count" class="muted" style="margin-left:auto"></span>
+</div>
+
+<div id="grid-msg" class="flash warn" hidden></div>
+<div id="grid"></div>
+
+<dialog id="dlg-add" class="fu-dialog">
+  <form method="dialog" id="form-add" class="stack">
+    <h3 style="margin:0">Thêm lô hàng mới</h3>
+    <p class="muted" style="margin:0;font-size:12px">Bắt buộc: JO, EX-FACT DATE, BUYER. Các cột khác điền tiếp trên lưới.</p>
+    <label>JO<input name="JO" required></label>
+    <label>EX-FACT DATE<input name="ExFtyDate" type="date" required></label>
+    <label>BUYER<input name="Buyer" list="buyer-list" required></label>
+    <datalist id="buyer-list">{% for b in buyers %}<option value="{{ b }}">{% endfor %}</datalist>
+    <label>MODE<select name="ShipMode"><option>S</option><option>A</option></select></label>
+    <label>CBM<input name="FinalCBM" inputmode="decimal"></label>
+    <label>PO<input name="PO"></label>
+    {% if me.can('shipments.assign') %}
+    <label>Giao cho<select name="assign_to"><option value="">(theo rule tự động)</option>
+      {% for u in users %}<option value="{{ u.name }}">{{ u.label }}</option>{% endfor %}</select></label>
+    {% endif %}
+    <div id="add-error" class="flash err" hidden></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="ghost" id="add-cancel">Hủy</button>
+      <button type="submit" id="add-ok">Thêm</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+{% block scripts %}
+<script>window.GRID_CFG = {{ grid_cfg|tojson }};</script>
+<script src="/static/vendor/jsuites.js"></script>
+<script src="/static/vendor/jspreadsheet.js"></script>
+<script src="/static/followup.js"></script>
+{% endblock %}

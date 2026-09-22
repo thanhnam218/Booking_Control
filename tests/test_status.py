@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from booking_bot.core.status import effective_status, evaluate, is_upgrade, status_counts
+from booking_control.core.status import effective_status, evaluate, is_upgrade, status_counts
 
 
 def base(**kw):
@@ -91,7 +91,7 @@ def test_explain_trace_is_readable():
 def test_user_override_wins():
     """SRS muc 34-35."""
     assert effective_status("GREEN", "YELLOW") == ("YELLOW", "USER")
-    assert effective_status("GREEN", None) == ("GREEN", "BOT")
+    assert effective_status("GREEN", None) == ("GREEN", "AUTO")
 
 
 def test_is_upgrade():

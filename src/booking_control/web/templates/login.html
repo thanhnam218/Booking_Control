@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Đăng nhập - {{ app_name }}{% endblock %}
+{% block public %}
+<div class="login-wrap">
+  <div class="card">
+    <h1>{{ app_name }}</h1>
+    <p class="page-sub">Quản lý Export Shipment &amp; Booking &middot; đăng nhập để tiếp tục</p>
+    {% if msg %}<div class="flash ok">{{ msg }}</div>{% endif %}
+    {% if error %}<div class="flash err">{{ error }}</div>{% endif %}
+    <form method="post" action="/login" class="stack">
+      <input type="hidden" name="next" value="{{ next }}">
+      <label>Tên đăng nhập<input name="username" value="{{ username }}" autocomplete="username" autofocus required></label>
+      <label>Mật khẩu<input name="password" type="password" autocomplete="current-password" required></label>
+      <label class="inline-check"><input type="checkbox" name="remember" value="1"> Ghi nhớ trên máy này</label>
+      <button type="submit">Đăng nhập</button>
+    </form>
+    <p class="muted" style="font-size:12px;margin-top:16px">Quên mật khẩu? Liên hệ Admin để đặt lại.</p>
+  </div>
+</div>
+{% endblock %}

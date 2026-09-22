@@ -2,10 +2,10 @@
 # DATA DICTIONARY  -  Canonical Field  <->  Header thuc te trong Excel
 # =============================================================================
 # Day la "trai tim" cua he thong (DMS muc 4-5). KHONG hard-code cot A/B/C trong
-# source code. Bot doc file nay de hieu header cua tung sheet Follow Up.
+# source code. Automation doc file nay de hieu header cua tung sheet Follow Up.
 #
 # Cach hoat dong:
-#   1. Bot doc dong header cua sheet.
+#   1. Automation doc dong header cua sheet.
 #   2. Chuan hoa chuoi (bo dau cach, ky tu dac biet, viet thuong).
 #   3. So khop voi `aliases` -> confidence = 100%.
 #   4. Neu khong khop chinh xac -> fuzzy match. Confidence >= fuzzy_accept
@@ -137,7 +137,7 @@ fields:
     description: >-
       Loai / so luong cont User da book (1x20, 2x40HC, LCL...). Thuong la O MERGE
       cho ca nhom dong cung NO -> tinh 1 lan cho ca nhom. Day la lua chon cua USER,
-      Bot chi doi chieu voi CBM va canh bao neu thieu cho.
+      Automation chi doi chieu voi CBM va canh bao neu thieu cho.
     aliases: ["CONT TYPE", "Cont Type", "Container Type", "ContainerType",
               "Loai cont", "Type Cont", "Equipment"]
 
@@ -353,15 +353,21 @@ fields:
     required: false
     aliases: ["CO granted date", "CO Date", "Ngay cap CO", "C/O Date"]
 
+  SQ:
+    type: string
+    required: false
+    description: "Cot SQ trong file Follow Up that - chua xac nhan y nghia, chi luu va hien thi."
+    aliases: ["SQ"]
+
   # ===========================================================================
   # NHOM 6 - TRANG THAI  (file that KHONG co cac cot nay -> xem remark_keywords
-  #          va viec Bot doc mau dong User to tay)
+  #          va viec Automation doc mau dong User to tay)
   # ===========================================================================
 
   BookingFlag:
     type: flag
     required: false
-    description: "Co da booking dang Yes/No. Neu khong co, Bot suy ra tu BookingNo / CDF / BL."
+    description: "Co da booking dang Yes/No. Neu khong co, Automation suy ra tu BookingNo / CDF / BL."
     aliases: ["Booking", "Booked", "Booking Status", "BKG", "Da book", "Book"]
 
   HoldFlag:
@@ -410,7 +416,7 @@ fields:
 # -----------------------------------------------------------------------------
 # Tai tao dung cong thuc cua file that. Dung cho 2 viec:
 #   1. Fallback: o NO khong co gia tri tinh san (file bi luu boi cong cu khac,
-#      chua mo lai bang Excel) -> Bot tu tinh NO tu INVOICE, khong bo trong.
+#      chua mo lai bang Excel) -> Automation tu tinh NO tu INVOICE, khong bo trong.
 #   2. Doi chieu: NO trong file khac voi ket qua cong thuc -> co nguoi go de
 #      len cong thuc -> Exception EX013.
 # -----------------------------------------------------------------------------
@@ -427,7 +433,7 @@ derived_fields:
 # TU KHOA TRONG CO REMARK
 # -----------------------------------------------------------------------------
 # File that khong co cot HOLD / CANCEL. Neu REMARK chua tu khoa duoi day va file
-# khong co cot tuong ung -> Bot hieu la HOLD / CANCEL. Phan con lai cua REMARK
+# khong co cot tuong ung -> Automation hieu la HOLD / CANCEL. Phan con lai cua REMARK
 # duoc dung lam ly do hold.
 remark_keywords:
   hold: ["HOLD", "TAM DUNG", "GIU HANG", "ON HOLD", "CHO KHACH"]

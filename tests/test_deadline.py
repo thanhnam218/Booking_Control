@@ -6,7 +6,7 @@ import datetime as dt
 
 import pytest
 
-from booking_bot.core.deadline import (
+from booking_control.core.deadline import (
     check_t3_fields,
     compute_milestones,
     days_until,
@@ -14,7 +14,7 @@ from booking_bot.core.deadline import (
     evaluate_shipment,
     t3_summary,
 )
-from booking_bot.settings import DeadlinesCfg
+from booking_control.settings import DeadlinesCfg
 
 CFG = DeadlinesCfg()
 TODAY = dt.date(2026, 9, 18)

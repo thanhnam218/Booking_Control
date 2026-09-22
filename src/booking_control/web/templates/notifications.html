@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Thông báo</h2>
+<p class="page-sub">Thông báo deadline / hold / phân công gửi cho bạn. Trình duyệt hiện Desktop Notification khi tab này đang mở.
+  <button type="button" id="ask-notify" class="ghost btn-sm" hidden>Bật thông báo màn hình</button></p>
+
+<div class="toolbar">
+  {% if me.is_manager %}
+  <a class="btn {{ '' if scope!='all' else 'ghost' }}" href="/notifications?scope=mine">Của tôi + chung</a>
+  <a class="btn {{ '' if scope=='all' else 'ghost' }}" href="/notifications?scope=all">Tất cả mọi người</a>
+  {% endif %}
+  <form method="post" action="/notifications/read-all"><button class="ghost" type="submit">Đánh dấu đã đọc tất cả</button></form>
+</div>
+
+<div class="card scroll-x">
+<table>
+  <thead><tr><th>Lúc</th><th>Mức độ</th><th>Loại</th><th>Nội dung</th><th>Lô hàng</th>{% if scope=='all' %}<th>Gửi cho</th>{% endif %}<th></th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr style="{{ '' if r.read else 'font-weight:600' }}">
+      <td class="mono nowrap">{{ r.ts.strftime('%d/%m %H:%M') }}</td>
+      <td class="sev-{{ r.sev }}">{{ r.sev }}</td>
+      <td class="mono">{{ r.cat }}</td>
+      <td>{{ r.title }}<div class="muted" style="font-weight:400;white-space:pre-line">{{ r.body }}</div></td>
+      <td>{% if r.shipment %}<a href="/shipments/{{ r.shipment }}" class="mono">{{ r.shipment }}</a>{% endif %}</td>
+      {% if scope=='all' %}<td>{{ r.recipient or '(chung)' }}</td>{% endif %}
+      <td>{% if not r.ack %}
+        <form method="post" action="/notifications/{{ r.id }}/ack"><button class="ghost btn-sm" type="submit">Đã xem</button></form>
+        {% else %}<span class="muted">✓</span>{% endif %}</td>
+    </tr>
+  {% else %}<tr><td colspan="7" class="muted">Chưa có thông báo</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

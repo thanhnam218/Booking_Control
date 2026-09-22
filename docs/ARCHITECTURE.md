@@ -2,21 +2,23 @@
 
 ## 1. Nguyên tắc nền
 
-> Không xây một "Excel Macro thông minh", mà xây một hệ thống Automation có **Database ở giữa**, Excel là nguồn và đích dữ liệu.
+> Không xây "Excel trên web", mà xây **Shipment Management + Workflow + Automation**, rồi làm giao diện 47 cột đủ giống Follow Up để người dùng chuyển đổi dễ dàng. **Database ở giữa**; Excel chỉ còn là nguồn nhập, file xuất và định dạng quen thuộc.
+
+Từ v2 không còn khái niệm "Bot" (SRS v2 mục 54, 81): các tác vụ tự động là **job của Automation Engine** chạy phía máy chủ; người dùng làm việc qua web có đăng nhập và phân quyền.
 
 Hệ quả trực tiếp:
 
 - Mọi dữ liệu đọc từ Excel đều được **chuẩn hóa** rồi mới vào DB → logic nghiệp vụ không bao giờ chạm vào giá trị thô
 - Mọi thay đổi đều có **lịch sử** (Audit Log) → truy được ai đổi gì, lúc nào
-- Mọi thứ Bot **không chắc** đều vào Exception Center → không đoán bừa
-- Bot ghi ra Excel là bước **cuối cùng**, có backup + version check + retry
+- Mọi thứ Automation **không chắc** đều vào Exception Center → không đoán bừa
+- Automation ghi ra Excel là bước **cuối cùng**, có backup + version check + retry
 
 ---
 
 ## 2. Luồng xử lý
 
 ```
-BOT START
+AUTO START
    │
    ▼
 Load Configuration          config/*.yaml → Settings, FieldDictionary, BuyerRegistry
@@ -52,7 +54,7 @@ Calculate Container         capacity >= CBM, ưu tiên 40HC → 40DC → 20ST
 Calculate Booking Status    RED > CANCELLED > COMPLETED/PARTIAL > WHITE > YELLOW > GREEN
    │
    ▼
-Apply User Override         USER > BOT
+Apply User Override         USER > AUTO
    │
    ▼
 Check Deadline
@@ -78,18 +80,19 @@ Audit Log → WAIT NEXT SCAN
 ## 3. Bản đồ module
 
 ```
-src/booking_bot/
+src/booking_control/
 ├── settings.py             Đọc & validate YAML → object có kiểu
 ├── logging_setup.py        Log xoay vòng theo ngày
 ├── audit.py                Audit Log + Exception Center helper
 ├── engine.py               ★ Điều phối toàn bộ pipeline
-├── scheduler.py            APScheduler: quét định kỳ, flush thông báo, retry queue
-├── tray.py                 Icon khay hệ thống (pystray)
+├── scheduler.py            Automation Engine: job + JobRun (retry, lịch sử)
+├── followup/template.py    Khung 47 cột, quyền từng cột, công thức Python/JS/Excel
+├── services/               Nghiệp vụ dùng chung web + automation (quyền, sửa ô, phân công, xuất Excel)
 ├── cli.py                  Giao diện dòng lệnh (typer)
 │
 ├── db/
-│   ├── models.py           17 bảng SQLAlchemy
-│   └── session.py          Engine + session scope
+│   ├── models.py           21 bảng SQLAlchemy
+│   └── session.py          Engine + session scope + nâng cấp cột tự động (kể cả đổi tên cột v1)
 │
 ├── excel/                  ── TẦNG I/O ──
 │   ├── mapping.py          Data Dictionary, header → canonical field, confidence
@@ -106,6 +109,7 @@ src/booking_bot/
 │   ├── shipment.py         ShipmentKey, GroupKey, duplicate, split JO, gợi ý gộp lô
 │   ├── container.py        Container Allocation Engine
 │   ├── status.py           Status Engine + explain trace
+│   ├── forwarder.py        Buyer-Forwarder Rule: AUTO_ASSIGNED / NEED_CONFIRM / NOT_ASSIGNED
 │   └── deadline.py         T-20…T-1, kiểm tra T-3
 │
 ├── outputs/                ── ÁNH XẠ FILE ĐÍCH ──
@@ -116,15 +120,18 @@ src/booking_bot/
 │   └── shipping_schedule.py T-1, TDV/TGV
 │
 ├── notify/
-│   ├── channels.py         console / toast / popup Tkinter / callback
+│   ├── channels.py         web (chuông + Desktop Notification) / email SMTP / console
 │   └── engine.py           Dedup, phân loại severity, khung giờ, gom nhóm
 │
 ├── integrations/
 │   └── outlook.py          Đọc Outlook desktop (tùy chọn)
 │
 └── web/
-    ├── app.py              FastAPI routes
-    └── templates/          11 trang Jinja2
+    ├── app.py              FastAPI app + xử lý đăng nhập / cấm truy cập
+    ├── auth.py deps.py     Mật khẩu, phiên, CSRF, ma trận quyền
+    ├── routes_*.py         auth · main · grid (lưới + export/import) · admin
+    ├── templates/          20 trang Jinja2
+    └── static/             followup.js (lưới), app.js, vendor/ Jspreadsheet CE + jSuites (MIT)
 ```
 
 **Quy tắc phụ thuộc:** `core/` không import `excel/`, `db/` hay `web/`. Toàn bộ logic nghiệp vụ là hàm thuần → test được không cần file Excel, không cần database.
@@ -133,13 +140,14 @@ src/booking_bot/
 
 ## 4. Database
 
-17 bảng, nhóm theo vai trò:
+21 bảng, nhóm theo vai trò:
 
 **Cấu hình & ánh xạ**
 
 | Bảng | Vai trò |
 |---|---|
-| `users` | Người dùng, vai trò admin/user |
+| `users` | Tài khoản: vai trò admin / manager / user / viewer, mật khẩu băm, nhóm |
+| `web_sessions` | Phiên đăng nhập (lưu hash token) + CSRF token |
 | `source_files` | File Registry — đường dẫn, quyền đọc/ghi, version token cuối |
 | `sheet_maps` | Sheet nào là Follow Up, confidence, User đã xác nhận chưa, chữ ký header |
 | `column_mappings` | Header Excel → canonical field, do User chốt |
@@ -149,7 +157,8 @@ src/booking_bot/
 
 | Bảng | Vai trò |
 |---|---|
-| `shipments` | Lô hàng — khóa `shipment_key`, kèm metadata nguồn và `data_hash` |
+| `shipments` | Lô hàng — khóa `shipment_key`, metadata nguồn, `data_hash`; v2 thêm `row_data` (47 cột), `field_src` (ô nào sửa tay, bởi ai), `version` (optimistic lock), `assigned_to` / `backup_owner`, `forwarder`, `origin` (EXCEL/WEB), `archived` |
+| `assignment_history` | Lịch sử giao / giao lại (không xóa) |
 | `invoices` | 1-n: một lô nhiều invoice |
 | `customs_declarations` | 1-n: một lô nhiều tờ khai |
 | `container_allocations` | Theo `group_key`, không theo từng lô |
@@ -158,17 +167,18 @@ src/booking_bot/
 
 | Bảng | Vai trò |
 |---|---|
-| `user_overrides` | USER > BOT — trường nào User đã chốt |
+| `user_overrides` | USER > AUTO — trường nào User đã chốt |
 | `audit_logs` | Ai · lúc nào · đổi gì · từ đâu |
 | `exceptions` | Exception Center, có `dedup_key` chống trùng |
 | `notifications` | Notification Center, `dedup_key` chống spam |
-| `planning_records` | Bot đã ghi dòng nào ra file đích → chống INSERT trùng |
+| `planning_records` | Automation đã ghi dòng nào ra file đích → chống INSERT trùng |
 | `pending_writes` | Hàng đợi khi file bị khóa |
 | `file_versions` | Lịch sử version + đường dẫn backup |
 | `system_settings` | Cài đặt runtime |
 | `scan_runs` | Lịch sử từng lần quét |
+| `job_runs` | Mọi job Automation: bắt đầu, kết thúc, trạng thái, lỗi, số lần thử lại |
 
-SQLite mặc định (WAL mode). Nhiều user dùng chung → đổi `database.url` sang SQL Server, không cần sửa code.
+SQLite mặc định (WAL mode) — đủ cho một phòng vài chục người. Nhiều người / nhiều máy chủ → đổi `database.url` sang SQL Server hoặc PostgreSQL, không cần sửa code.
 
 ---
 
@@ -184,20 +194,20 @@ Một JO tách thành 2 ngày xuất là **hai lô hàng**, mỗi lô có deadli
 
 **Vì sao không có NO trong khóa** — quyết định sau khi xem file Follow Up thật: cột NO là công thức `=IF(LEFT(M2,4)="TEGV",RIGHT(M2,5)-2108,"")`, trống cho đến khi có invoice. Nếu NO nằm trong khóa, lúc invoice xuất hiện lô hàng sẽ bị coi là lô mới. NO chỉ dùng để **gom lô**.
 
-**Ngoại lệ đã xử lý:** khi `ExFtyDate` của **cùng một dòng Excel** thay đổi, Bot nhận ra qua vị trí dòng (`file + sheet + row`) cộng với `JO` không đổi → coi là **cùng một lô bị dời lịch**, đổi khóa và tính lại deadline, không tạo lô mới.
+**Ngoại lệ đã xử lý:** khi `ExFtyDate` của **cùng một dòng Excel** thay đổi, Automation nhận ra qua vị trí dòng (`file + sheet + row`) cộng với `JO` không đổi → coi là **cùng một lô bị dời lịch**, đổi khóa và tính lại deadline, không tạo lô mới.
 
 ### 5.2 GroupKey tách khỏi ShipmentKey
 
 Container tính theo **nhóm**, không theo từng lô: IKEA gom mọi JO cùng ngày xuất vào một container; buyer khác gom theo `NO + ExFtyDate`. Quy tắc gom nằm trong `buyer_rules.yaml`.
 
-### 5.3 Trạng thái Bot và trạng thái hiển thị là hai cột riêng
+### 5.3 Trạng thái Automation và trạng thái hiển thị là hai cột riêng
 
 ```
-bot_status         Bot tính, luôn cập nhật
-effective_status   = user_override nếu có, ngược lại = bot_status
+auto_status         Automation tính, luôn cập nhật
+effective_status   = user_override nếu có, ngược lại = auto_status
 ```
 
-Nhờ tách hai cột: User override mà vẫn thấy Bot nghĩ gì; bỏ override là quay lại trạng thái Bot ngay, không cần quét lại.
+Nhờ tách hai cột: User override mà vẫn thấy Automation nghĩ gì; bỏ override là quay lại trạng thái Automation ngay, không cần quét lại.
 
 ### 5.4 Ba lớp chống mất dữ liệu
 
@@ -223,7 +233,7 @@ Sheet detection và header mapping đều trả về **điểm số**, không ph
 <  0.65   bỏ qua
 ```
 
-Bot không bao giờ tự map mơ hồ. Sau khi User xác nhận, quyết định đó được lưu và ưu tiên tuyệt đối.
+Automation không bao giờ tự map mơ hồ. Sau khi User xác nhận, quyết định đó được lưu và ưu tiên tuyệt đối.
 
 ### 5.7 Ghi Excel lossless
 
@@ -236,7 +246,7 @@ Bot không bao giờ tự map mơ hồ. Sau khi User xác nhận, quyết địn
 | Thiết lập in, calcChain | có | **mất** |
 | 33 external link | nguyên | **bị ghi lại** |
 
-Bot chạy lần hai sẽ đọc NO = trống → mọi lô mất số folder. Vì vậy `excel/xlsx_patch.py` mở file như một gói zip và chỉ sửa đúng:
+Automation chạy lần hai sẽ đọc NO = trống → mọi lô mất số folder. Vì vậy `excel/xlsx_patch.py` mở file như một gói zip và chỉ sửa đúng:
 
 ```
 xl/styles.xml              thêm fill / xf mới (tái sử dụng nếu đã có)
@@ -244,11 +254,11 @@ xl/worksheets/sheetN.xml   thuộc tính s="" của ô cần tô, hoặc giá tr
 xl/workbook.xml            chỉ khi có công thức mới (bật fullCalcOnLoad)
 ```
 
-Kết quả trên chính file thật sau 2 lần Bot ghi: **79/81 part giống từng byte**, NO vẫn đọc đúng, công thức, merge, comment, 1495 defined name còn nguyên.
+Kết quả trên chính file thật sau 2 lần Automation ghi: **79/81 part giống từng byte**, NO vẫn đọc đúng, công thức, merge, comment, 1495 defined name còn nguyên.
 
 Quy tắc đi kèm:
 - **Không bao giờ ghi đè ô công thức** — `set_value()` trả `False`
-- Dòng mới trong file đích: **kéo công thức** từ dòng mẫu (dịch tham chiếu như Excel fill-down); cột mà dòng mẫu dùng công thức thì Bot không ghi giá trị của nó vào
+- Dòng mới trong file đích: **kéo công thức** từ dòng mẫu (dịch tham chiếu như Excel fill-down); cột mà dòng mẫu dùng công thức thì Automation không ghi giá trị của nó vào
 - Style mới được **dedup** → chạy 1000 lần `styles.xml` không phình
 - Không có ô nào đổi → **không đụng vào file** (mtime giữ nguyên)
 - openpyxl chỉ dùng để **đọc**
@@ -259,9 +269,9 @@ Quy tắc đi kèm:
 
 | Tình huống | Cách xử lý |
 |---|---|
-| Hai Bot cùng ghi 1 file chung | Version check → Bot thứ hai dừng, thử lại lần quét sau |
+| Hai Automation cùng ghi 1 file chung | Version check → Automation thứ hai dừng, thử lại lần quét sau |
 | File đang mở trong Excel | Phát hiện marker `~$`, retry 30/60/120s → Pending Queue |
-| Bot bị kill giữa lúc ghi | Ghi atomic → file gốc nguyên vẹn; bản backup vẫn còn |
+| Automation bị kill giữa lúc ghi | Ghi atomic → file gốc nguyên vẹn; bản backup vẫn còn |
 | Máy tắt đột ngột | SQLite WAL → DB không hỏng; lần chạy sau quét lại |
 | Scan trước chưa xong đã tới giờ scan sau | `max_instances=1` + khóa nội bộ → bỏ qua lần trùng |
 
@@ -280,3 +290,57 @@ Quy tắc đi kèm:
 | Đổi sang SQL Server | Đổi `database.url` |
 
 Chi tiết kèm ví dụ code: [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md).
+
+
+---
+
+## 8. Kiến trúc v2 — Web + Workflow + Automation
+
+### 8.1 Triển khai
+
+```
+ Người dùng (Chrome/Edge) ──HTTP LAN──▶  MÁY CHỦ NỘI BỘ Windows  (bookingctl run, web.host 0.0.0.0)
+                                         ├── FastAPI: auth_guard (phiên + CSRF) → routes → services
+                                         ├── AutomationScheduler (cùng tiến trình)
+                                         │     followup_scan · notification_dispatch · excel_write_retry
+                                         │     outlook_scan · housekeeping   → job_runs
+                                         └── Database (SQLite WAL / SQL Server / PostgreSQL)
+ File Excel (OneDrive đã sync về máy chủ) ◀── đọc Follow Up, ghi Planning/HS Code/MM/Lịch xuất (lossless)
+```
+
+Một tiến trình duy nhất cho web + automation: đơn giản để cài trên Windows, không cần Redis/Celery. Khóa `threading.Lock` trong scheduler bảo đảm hai lần quét không chồng nhau; mỗi request web dùng session DB riêng.
+
+### 8.2 Nguồn dữ liệu và thứ tự ưu tiên (SRS v2 mục 71)
+
+```
+1. Người dùng / Quản lý sửa trên web      field_src[field] = USER | MANAGER   (thắng)
+2. Email Outlook đã xác nhận               (auto_apply, cột auto: true)
+3. Excel import (quét file / upload)       chỉ ghi ô chưa bị sửa tay
+4. Rule mặc định / công thức
+```
+
+`engine._merge_web_overrides()` áp thứ tự này mỗi lần đọc Excel: ô đã sửa tay giữ giá trị web; nếu file Excel **đổi** ô đó sang giá trị khác thì tạo `EX015` (một lần cho mỗi giá trị) để Quản lý chọn *giữ web* hoặc *lấy Excel*. Nhờ `field_src[field].excel` (giá trị Excel lần cuối thấy), file không đổi thì không báo lại.
+
+`apply_values()` là **một hàm duy nhất** gán 47 cột → các cột nghiệp vụ (trạng thái, CO, site, forwarder, cờ HOLD từ REMARK) cho cả Excel import lẫn sửa trên web → hai đường không bao giờ lệch logic.
+
+### 8.3 Phân quyền
+
+- **Vai trò** (`web/auth.py → PERMISSIONS`): admin ⊃ manager ⊃ user; viewer chỉ đọc.
+- **Phạm vi dòng** (`services/shipment_service.visible_stmt`): user chỉ thấy lô `assigned_to` hoặc `backup_owner` là mình. Mọi truy vấn web (lưới, danh sách, chi tiết, export, exception, thông báo) đều đi qua đây. Lô ngoài quyền trả 404 (không lộ là có tồn tại).
+- **Quyền cột** (`followup_template.yaml`): `edit / review / view` cho user, `edit / view` cho manager. `review` = cho sửa nhưng tạo `EX016`.
+- **CSRF**: token theo phiên, bắt buộc với mọi POST (form: `_csrf`, fetch: header `X-CSRF-Token`). Cookie `HttpOnly`, `SameSite=Lax`.
+
+### 8.4 Đồng thời
+
+- **Optimistic lock**: mỗi lô có `version`; lưới gửi kèm `v`; lệch → không ghi, trả dòng mới nhất (`conflicts`). Automation, phân công, sửa tay đều tăng `version`.
+- Excel import tăng `version` khi `data_hash` của dòng đổi → người đang mở lưới cũ sẽ nhận conflict thay vì ghi đè dữ liệu vừa quét.
+
+### 8.5 Lưới Follow Up
+
+Jspreadsheet CE 4 (MIT) đóng gói trong `static/vendor` — chạy offline trong LAN. `parseFormulas: false` + `stripHTML: true`: ô không bao giờ được hiểu là HTML hay công thức JS (chống XSS từ dữ liệu Excel). Công thức nghiệp vụ lấy từ server dưới dạng biểu thức đã kiểm tra bằng `ast`, dịch sang hàm JS chỉ gồm `F/A/S/M/D/R` → không `eval` chuỗi người dùng.
+
+Cột công thức chỉ tự tính lại khi đang **"sống"** (giá trị hiện tại = kết quả công thức, hoặc trống) — dòng Excel gõ tay số NO không bị ghi đè; dòng tạo trên web luôn theo công thức.
+
+### 8.6 Xuất Excel
+
+`services/excel_export.build_workbook()` tạo file mới bằng openpyxl (không đụng file gốc): nhóm theo Buyer → sheet (≤ 31 ký tự, chống trùng), 47 cột theo template, công thức Excel thật cho cột công thức (trừ ô đã sửa tay), cột hệ thống ở cuối, freeze A–J, AutoFilter, màu trạng thái, merge CONT TYPE theo nhóm liên tiếp.

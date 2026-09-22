@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Lô hàng</h2>
+<p class="page-sub">{{ rows|length }} lô &middot; {% if me.can('shipments.view_all') %}toàn bộ phạm vi{% else %}chỉ lô được giao cho bạn{% endif %}
+  &middot; muốn sửa như Excel: <a href="/followup">mở lưới Follow Up</a></p>
+
+<form class="toolbar" method="get" action="/shipments">
+  <input name="q" value="{{ f.q }}" placeholder="JO / NO / PO / Booking">
+  <select name="status"><option value="">Mọi trạng thái</option>
+    {% for s in statuses %}<option {{ 'selected' if f.status==s }}>{{ s }}</option>{% endfor %}</select>
+  <select name="buyer"><option value="">Mọi buyer</option>
+    {% for b in buyers %}<option {{ 'selected' if f.buyer==b }}>{{ b }}</option>{% endfor %}</select>
+  {% if users %}
+  <select name="assigned"><option value="">Mọi người phụ trách</option>
+    <option value="__none__" {{ 'selected' if f.assigned=='__none__' }}>(Chưa phân công)</option>
+    {% for u in users %}<option {{ 'selected' if f.assigned==u }}>{{ u }}</option>{% endfor %}</select>
+  {% endif %}
+  <select name="bucket"><option value="">Mọi hạn</option>
+    {% for k, l in bucket_labels %}<option value="{{ k }}" {{ 'selected' if f.bucket==k }}>{{ l }}</option>{% endfor %}</select>
+  <button type="submit">Lọc</button>
+  <a class="btn ghost" href="/shipments">Bỏ lọc</a>
+</form>
+
+<div class="card scroll-x">
+<table>
+  <thead><tr><th>NO</th><th>JO</th><th>Buyer</th><th>EX-FACT</th><th>Hạn</th><th class="right">CBM</th>
+    <th>Mode</th><th>CDF</th><th>BL</th><th>Forwarder</th><th>Phụ trách</th><th>Status</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td class="mono">{{ r.no }}</td>
+      <td><a class="mono" href="/shipments/{{ r.code }}">{{ r.jo or r.code }}</a>
+        {% if r.origin == 'WEB' %}<span class="tag web">web</span>{% endif %}</td>
+      <td>{{ r.buyer }}</td>
+      <td class="mono">{{ r.exfty.strftime('%d/%m/%Y') if r.exfty else '-' }}</td>
+      <td class="nowrap {{ 'late' if r.days_left is not none and r.days_left < 3 and r.deadline else '' }}">{{ r.deadline }}</td>
+      <td class="right mono">{{ '%.2f'|format(r.cbm) if r.cbm else '' }}</td>
+      <td>{{ r.mode }}</td>
+      <td class="mono">{{ r.cdf }}</td>
+      <td class="mono">{{ r.bl }}</td>
+      <td>{{ r.forwarder or '' }}{% if r.forwarder_status in ['NEED_CONFIRM','CONFLICT'] %} <span class="tag manual">{{ r.forwarder_status }}</span>{% endif %}</td>
+      <td>{{ r.assigned_to or '—' }}{% if r.backup_owner %} <span class="muted">/ {{ r.backup_owner }}</span>{% endif %}</td>
+      <td><span class="pill {{ r.status }}">{{ r.status }}</span>{% if r.overridden %} <span class="tag manual">USER</span>{% endif %}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="12" class="muted">Không có lô hàng nào</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Người dùng &amp; phân quyền</h2>
+<p class="page-sub"><b>Quản trị</b>: toàn quyền &middot; <b>Quản lý</b>: xem tất cả lô, phân công, xử lý exception, nhập/xuất Excel &middot;
+  <b>Người dùng</b>: chỉ xem &amp; sửa lô được giao &middot; <b>Chỉ xem</b>: xem, không sửa. Tài khoản không bị xóa (giữ lịch sử) — chỉ khóa.</p>
+{% if msg %}<div class="flash ok">{{ msg }}</div>{% endif %}
+{% if error %}<div class="flash err">{{ error }}</div>{% endif %}
+{% if temp %}<div class="flash warn">Mật khẩu tạm của <b>{{ temp_user }}</b>: <code style="font-size:15px">{{ temp }}</code>
+  — gửi riêng cho người dùng. Họ phải đổi mật khẩu ở lần đăng nhập đầu. Mật khẩu này chỉ hiện một lần.</div>{% endif %}
+
+<div class="card">
+  <h3>Thêm tài khoản</h3>
+  <form method="post" action="/admin/users" class="inline">
+    <input name="name" placeholder="Tên đăng nhập (vd nam.nguyen)" required>
+    <input name="display_name" placeholder="Họ tên">
+    <input name="email" type="email" placeholder="Email">
+    <select name="role">{% for r in roles %}<option value="{{ r }}" {{ 'selected' if r=='user' }}>{{ role_labels[r] }}</option>{% endfor %}</select>
+    <input name="team" placeholder="Nhóm (tùy chọn)" size="10">
+    <button type="submit">Tạo (mật khẩu tạm tự sinh)</button>
+  </form>
+</div>
+
+<div class="card scroll-x">
+  <table>
+    <thead><tr><th>Tên đăng nhập</th><th>Họ tên</th><th>Email</th><th>Vai trò</th><th>Nhóm</th><th>Hoạt động</th><th class="right">Lô đang giữ</th><th>Đăng nhập cuối</th><th></th></tr></thead>
+    <tbody>
+    {% for u in rows %}
+      <tr style="{{ '' if u.active else 'opacity:.55' }}">
+        <td class="mono">{{ u.name }}{% if not u.has_pw %} <span class="tag manual">chưa có mật khẩu</span>{% elif u.must_change %} <span class="tag">mk tạm</span>{% endif %}</td>
+        <td><input form="uf-{{ u.id }}" name="display_name" value="{{ u.display_name }}" size="14"></td>
+        <td><input form="uf-{{ u.id }}" name="email" value="{{ u.email }}" size="16"></td>
+        <td><select form="uf-{{ u.id }}" name="role">{% for r in roles %}<option value="{{ r }}" {{ 'selected' if r==u.role }}>{{ role_labels[r] }}</option>{% endfor %}</select></td>
+        <td><input form="uf-{{ u.id }}" name="team" value="{{ u.team }}" size="7"></td>
+        <td><input form="uf-{{ u.id }}" type="checkbox" name="active" value="1" {{ 'checked' if u.active }}></td>
+        <td class="right">{{ u.shipments }}</td>
+        <td class="mono nowrap">{{ u.last_login.strftime('%d/%m %H:%M') if u.last_login else '—' }}</td>
+        <td class="nowrap">
+          <form id="uf-{{ u.id }}" method="post" action="/admin/users/{{ u.id }}" style="display:inline"><button class="btn-sm" type="submit">Lưu</button></form>
+        <form method="post" action="/admin/users/{{ u.id }}/reset-password" style="display:inline" onsubmit="return confirm('Đặt mật khẩu tạm mới cho {{ u.name }}?')">
+          <button class="btn-sm ghost" type="submit">Đặt lại MK</button></form></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

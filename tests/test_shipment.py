@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from booking_bot.core.shipment import (
+from booking_control.core.shipment import (
     ShipmentCandidate,
     build_candidates,
     detect_merge_candidates,
@@ -13,7 +13,7 @@ from booking_bot.core.shipment import (
     make_shipment_code,
     shipment_key,
 )
-from booking_bot.excel.reader import CanonicalRow
+from booking_control.excel.reader import CanonicalRow
 
 
 def row(no, jo, exfty, buyer="ABC", cbm=20.0, inv="", idx=2, owner="user_a"):

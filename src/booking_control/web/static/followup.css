@@ -1,0 +1,37 @@
+/* Luoi Follow Up - giong cam giac Excel */
+main{max-width:none}
+.fu-head{display:flex;align-items:flex-start;gap:16px}
+.fu-head .page-sub{margin-bottom:10px}
+.save-state{margin-left:auto;font-size:12px;padding:4px 10px;border-radius:12px;border:1px solid var(--line);white-space:nowrap}
+.save-state.busy{color:var(--partial);border-color:var(--partial)}
+.save-state.ok{color:var(--green);border-color:var(--green)}
+.save-state.err{color:var(--red);border-color:var(--red)}
+.fu-filter{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px}
+.fu-filter input,.fu-filter select{padding:4px 7px;font-size:12px}
+.fu-actions{margin-bottom:8px}
+.fu-actions .sep{width:1px;height:22px;background:var(--line)}
+.fu-actions select{padding:5px 7px;font-size:12px}
+.lg{display:inline-block;padding:0 6px;border-radius:3px;font-size:11px;border:1px solid var(--line)}
+.lg.fx{background:#f1f3f4;color:#5f6368;font-style:italic}
+.lg.manual{box-shadow:inset 0 0 0 2px #fb8c00}
+.lg.ro{color:#9aa0a6}
+#grid{background:#fff;border:1px solid var(--line);border-radius:6px;color:#222}
+#grid .jexcel{font-size:12px;font-family:Calibri,"Segoe UI",Arial,sans-serif}
+#grid .jexcel > thead > tr > td{font-size:11px;font-weight:700;background:#d9d9d9;white-space:normal;line-height:1.15;vertical-align:middle;height:34px}
+#grid .jexcel > tbody > tr > td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:2px 4px;height:21px}
+#grid .jexcel > tbody > tr > td.fx{color:#5f6368;font-style:italic}
+#grid .jexcel > tbody > tr > td.manual{box-shadow:inset 0 0 0 2px #fb8c00}
+#grid .jexcel > tbody > tr > td.ro{color:#6b7280}
+#grid .jexcel > tbody > tr > td.req{box-shadow:inset 0 0 0 2px #e53935}
+#grid .jexcel_search{padding:4px 7px;font-size:12px;border:1px solid #ccc;border-radius:4px}
+#grid .jexcel_filter{padding:6px 8px;background:#fafafa;border-bottom:1px solid #e0e0e0}
+#grid .jexcel_content{box-shadow:none}
+.fu-dialog{border:1px solid var(--line);border-radius:10px;padding:18px;min-width:340px;background:var(--panel);color:var(--ink)}
+.fu-dialog::backdrop{background:rgba(0,0,0,.35)}
+
+#grid{max-width:100%;overflow:hidden}
+#grid .jexcel_filter{display:flex;justify-content:flex-end;padding:6px 8px;background:#fafafa;border-bottom:1px solid #e0e0e0;font-size:12px;color:#555}
+#grid .jexcel > thead > tr > td.jexcel_column_filter{background:#fff;cursor:pointer;height:20px;font-weight:400;color:#1565c0}
+#grid .jexcel > thead > tr > td.jexcel_column_filter:empty::after,
+#grid .jexcel > thead > tr > td.jexcel_column_filter::after{content:"\25BE";float:right;color:#9aa0a6}
+#grid .jexcel_about{display:none}

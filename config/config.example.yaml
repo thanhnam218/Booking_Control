@@ -1,5 +1,5 @@
 # =============================================================================
-# BOOKING DEADLINE BOT - CAU HINH CHINH
+# BOOKING CONTROL - CAU HINH CHINH
 # =============================================================================
 # Copy file nay thanh config/config.yaml roi sua theo moi truong cua ban.
 #   PowerShell:  Copy-Item config\config.example.yaml config\config.yaml
@@ -7,27 +7,38 @@
 # =============================================================================
 
 app:
-  name: "Booking Deadline Bot"
+  name: "Booking Control"
   timezone: "Asia/Ho_Chi_Minh"
   language: "vi"
-  # Thu muc luu DB / log / backup. Mac dinh: %LOCALAPPDATA%\BookingBot
+  # Thu muc luu DB / log / backup. Mac dinh: %LOCALAPPDATA%\BookingControl
   data_dir: "./data"
   log_level: "INFO"
 
 database:
   # SQLite cho 1 may / it user. Doi sang SQL Server khi nhieu user dung chung.
-  url: "sqlite:///./data/bookingbot.db"
-  # url: "mssql+pyodbc://user:pass@SERVER/BookingBot?driver=ODBC+Driver+17+for+SQL+Server"
+  url: "sqlite:///./data/booking_control.db"
+  # url: "mssql+pyodbc://user:pass@SERVER/BookingControl?driver=ODBC+Driver+17+for+SQL+Server"
   echo: false
 
 # -----------------------------------------------------------------------------
 # NGUOI DUNG  (SRS muc 58-59)
 # -----------------------------------------------------------------------------
 users:
+  # CHI DUNG DE TAO SAN tai khoan lan dau (chua co mat khau).
+  # Sau do Admin quan ly tren web: Quan tri > Nguoi dung (dat mat khau tam, doi vai tro, khoa).
+  # role: admin (quan tri) | manager (quan ly) | user (nguoi dung) | viewer (chi xem)
+  - name: "admin"
+    display_name: "Quan tri he thong"
+    email: "admin@company.com"
+    role: "admin"
+  - name: "manager"
+    display_name: "Truong nhom Logistics"
+    email: "manager@company.com"
+    role: "manager"
   - name: "user_a"
     display_name: "Nguyen Van A"
     email: "a@company.com"
-    role: "user"          # admin | user
+    role: "user"
   - name: "user_b"
     display_name: "Tran Thi B"
     email: "b@company.com"
@@ -36,10 +47,20 @@ users:
     display_name: "Le Van C"
     email: "c@company.com"
     role: "user"
-  - name: "admin"
-    display_name: "Quan tri"
-    email: "admin@company.com"
-    role: "admin"
+
+# -----------------------------------------------------------------------------
+# PHAN CONG TU DONG (chi ap dung cho lo MOI chua co nguoi phu trach)
+# -----------------------------------------------------------------------------
+# Thu tu: rule dau tien khop -> giao; khong khop rule nao -> giao cho chu file Follow Up
+# (use_file_owner); van khong co -> "Chua phan cong" de Quan ly giao tay.
+# Automation KHONG BAO GIO doi nguoi phu trach ma Quan ly da giao.
+assignment:
+  auto_assign_new: true
+  use_file_owner: true
+  rules:
+    - { buyer: ["SAMSUNG"], user: "user_b", backup: "user_a" }
+    # - { buyer: ["ABC"], mode: ["AIR"], user: "user_c" }
+    # - { forwarder: ["DHL"], user: "user_a" }
 
 # -----------------------------------------------------------------------------
 # FILE REGISTRY  (DMS muc 2)
@@ -52,7 +73,7 @@ users:
 #   shipping_schedule F05 - dich, T-1 (TDV/TGV)
 #
 # LUU Y OneDrive/SharePoint: dung duong dan da sync ve may (C:\Users\...\OneDrive - Cong ty\...)
-# thay vi URL. Bot ghi vao file local, OneDrive tu dong sync len cloud.
+# thay vi URL. Automation ghi vao file local, OneDrive tu dong sync len cloud.
 files:
 
   - id: "F01-A"
@@ -62,7 +83,7 @@ files:
     owner: "user_a"
     storage: "local"      # local | onedrive | sharepoint
     read: true
-    write: true           # Bot duoc to mau dong tren file nay
+    write: true           # Automation duoc to mau dong tren file nay
 
   - id: "F01-B"
     role: "follow_up"
@@ -82,7 +103,7 @@ files:
     storage: "local"
     read: true
     write: true
-    # Cot A (NO) la cong thuc, User to vang de danh dau -> Bot khong to de mau cot nay
+    # Cot A (NO) la cong thuc, User to vang de danh dau -> Automation khong to de mau cot nay
     color_skip_columns: ["A"]
 
   - id: "F02"
@@ -157,7 +178,7 @@ scheduler:
     start: "08:00"
     end: "16:00"
   active_weekdays: ["mon", "tue", "wed", "thu", "fri", "sat"]
-  # Ngoai gio thong bao: Bot van scan, nhung don thong bao lai va ban ngay hom sau
+  # Ngoai gio thong bao: Automation van scan, nhung don thong bao lai va ban ngay hom sau
   queue_outside_window: true
 
 # -----------------------------------------------------------------------------
@@ -219,12 +240,12 @@ status:
       color: "FF7030A0"
       label: "Cho khach xac nhan"
       notify: false
-  # Bot co duoc phep to mau truc tiep len file Follow Up khong
+  # Automation co duoc phep to mau truc tiep len file Follow Up khong
   # (ghi LOSSLESS: chi doi mau o, giu nguyen cong thuc / external link / defined name)
   write_color_to_excel: true
-  # Doc mau User to tay trong Excel -> coi nhu User chot trang thai (USER > BOT)
-  #   to DO  -> RED (hold) | to VANG -> YELLOW | to dung mau Bot -> tra lai cho Bot
-  #   mau la (khong co trong bang) -> Bot khong to de dong do
+  # Doc mau User to tay trong Excel -> coi nhu User chot trang thai (USER > AUTO)
+  #   to DO  -> RED (hold) | to VANG -> YELLOW | to dung mau Automation -> tra lai cho Automation
+  #   mau la (khong co trong bang) -> Automation khong to de dong do
   read_user_colors: true
   # Khi nao coi la DA XUAT XONG (COMPLETED)
   completed_rule:
@@ -258,29 +279,58 @@ excel_write:
 # -----------------------------------------------------------------------------
 notification:
   channels:
-    toast: true                 # Windows toast (winotify)
-    popup: true                 # Cua so popup co Context + [Open Source]
-    tray_balloon: true
-    console: true               # luon bat khi chay CLI
+    web: true                   # chuong thong bao + Desktop Notification trong trinh duyet
+    email: false                # bat khi da cau hinh SMTP ben duoi
+    console: true
   severity_to_channel:
-    CRITICAL: ["popup", "toast"]
-    WARNING:  ["toast"]
-    INFO:     ["tray_balloon"]
-  # Gom nhom WARNING: 1 toast tong hop thay vi 20 toast
+    CRITICAL: ["web", "email"]
+    WARNING:  ["web"]
+    INFO:     ["web"]
   group_warnings: true
-  max_popups_per_scan: 5
+  # Gui email cho nguoi phu trach lo hang (tuy chon)
+  email:
+    enabled: false
+    smtp_host: "smtp.company.local"
+    smtp_port: 25
+    use_tls: false
+    username: ""
+    password_env: "BOOKINGCTL_SMTP_PASSWORD"   # mat khau dat trong bien moi truong, KHONG ghi o day
+    sender: "booking-control@company.com"
+    always_cc: []
+    base_url: "http://192.168.1.20:8765"       # dia chi may chu de chen link vao email
 
 # -----------------------------------------------------------------------------
-# WEB DASHBOARD
+# WEB NOI BO
 # -----------------------------------------------------------------------------
 web:
   enabled: true
+  # "127.0.0.1" = chi dung tren may nay.
+  # "0.0.0.0"   = may chu noi bo: dong nghiep cung mang LAN mo http://<IP-may-chu>:8765
   host: "127.0.0.1"
   port: 8765
   open_browser_on_start: false
-  # De trong = khong yeu cau dang nhap (chi lang nghe 127.0.0.1)
-  basic_auth_user: ""
-  basic_auth_password: ""
+  grid_page_size: 2000          # so dong toi da tren luoi Follow Up moi lan tai (loc de xem them)
+
+# -----------------------------------------------------------------------------
+# DANG NHAP
+# -----------------------------------------------------------------------------
+auth:
+  session_hours: 12
+  remember_days: 14
+  min_password_length: 8
+  max_failed_logins: 5          # sai 5 lan -> khoa tam 10 phut (theo ten + IP)
+  lockout_minutes: 10
+  allow_remote_setup: false     # trang tao Admin dau tien chi mo tren chinh may chu
+  secure_cookie: false          # dat true neu chay sau HTTPS (IIS / nginx reverse proxy)
+
+# -----------------------------------------------------------------------------
+# TAC VU TU DONG (Automation Engine)
+# -----------------------------------------------------------------------------
+jobs:
+  max_retries: 2                # vd Outlook mat ket noi -> thu lai 2 lan
+  retry_backoff_seconds: 30
+  keep_days: 60
+  outlook_interval_minutes: 30
 
 # -----------------------------------------------------------------------------
 # OUTLOOK  (yeu cau: "cap nhat trang thai da book hay chua tu mail outlook")
@@ -301,5 +351,5 @@ outlook:
     - "booking cancel"
     - "cancelled"
     - "huy booking"
-  # Bot chi GOI Y, User phai xac nhan trong Exception Center truoc khi doi trang thai
+  # Automation chi GOI Y, User phai xac nhan trong Exception Center truoc khi doi trang thai
   auto_apply: false

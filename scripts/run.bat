@@ -1,5 +1,5 @@
 @echo off
-REM Chay Booking Deadline Bot bang moi truong ao trong thu muc du an.
+REM Chay Booking Control bang moi truong ao trong thu muc du an.
 REM     run.bat check
 REM     run.bat scan --dry-run
 REM     run.bat run
@@ -13,7 +13,7 @@ if not exist "%PYEXE%" (
 )
 
 pushd "%ROOT%"
-"%PYEXE%" -m booking_bot %*
+"%PYEXE%" -m booking_control %*
 set RC=%ERRORLEVEL%
 popd
 exit /b %RC%

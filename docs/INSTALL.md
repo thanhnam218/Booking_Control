@@ -1,40 +1,36 @@
 # Hướng dẫn cài đặt — Windows
 
-Tài liệu này đi từ máy trắng đến Bot chạy ngầm hằng ngày. Làm theo đúng thứ tự.
+Tài liệu đi từ máy trắng đến hệ thống chạy ổn định cho cả phòng. Làm theo đúng thứ tự.
+
+**Mô hình triển khai khuyến nghị:** một máy Windows (PC để bàn hoặc laptop luôn bật trong giờ làm) làm **máy chủ nội bộ**. Máy này đọc được các file Excel Follow Up / Weekly Planning (qua OneDrive đã sync hoặc thư mục chia sẻ), chạy web + Automation. Mọi người khác chỉ cần trình duyệt Chrome/Edge, **không cài gì**.
+
+> Dùng một mình trên laptop cá nhân cũng được — bỏ qua mục 7 (mạng LAN).
 
 ---
 
-## 1. Cài Python
+## 1. Cài Python (chỉ trên máy chủ)
 
 1. Tải Python **3.11 trở lên**: <https://www.python.org/downloads/windows/>
-2. Khi chạy file cài, **tích vào ô `Add python.exe to PATH`** ở màn hình đầu tiên. Bỏ qua bước này là nguyên nhân số 1 khiến các bước sau báo lỗi.
-3. Kiểm tra — mở **PowerShell** (nút Start → gõ `powershell`):
+2. Ở màn hình đầu tiên của bộ cài, **tích ô `Add python.exe to PATH`**. Bỏ qua bước này là nguyên nhân số 1 khiến các bước sau báo lỗi.
+3. Kiểm tra — mở **PowerShell** (Start → gõ `powershell`):
 
 ```powershell
-python --version
+python --version        # phải ra Python 3.11.x hoặc cao hơn
 ```
-
-Phải ra `Python 3.11.x` hoặc cao hơn. Nếu báo *"không nhận diện được lệnh"*, cài lại và nhớ tích ô PATH.
 
 ---
 
 ## 2. Tải mã nguồn
 
-**Cách A — có Git:**
-
 ```powershell
 cd C:\Tools
-git clone https://github.com/<tài-khoản>/booking-deadline-bot.git
-cd booking-deadline-bot
+git clone https://github.com/<tài-khoản>/booking-control.git
+cd booking-control
 ```
 
-**Cách B — không có Git:** tải file ZIP trên GitHub (`Code` → `Download ZIP`), giải nén vào `C:\Tools\booking-deadline-bot`, rồi:
+Không có Git: trên GitHub bấm `Code` → `Download ZIP`, giải nén vào `C:\Tools\booking-control`.
 
-```powershell
-cd C:\Tools\booking-deadline-bot
-```
-
-> Đặt ở thư mục **không đồng bộ OneDrive** (ví dụ `C:\Tools\`). Để mã nguồn trong OneDrive dễ gây xung đột file khi Bot ghi database.
+> Đặt mã nguồn ở thư mục **không đồng bộ OneDrive** (ví dụ `C:\Tools\`). Database nằm trong `data\` — để trong OneDrive dễ bị xung đột khi đang ghi.
 
 ---
 
@@ -45,9 +41,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\scripts\install.ps1
 ```
 
-Script tự làm 4 việc: tạo môi trường ảo `.venv` → cài thư viện → tạo `config\config.yaml` → tạo bộ dữ liệu demo.
-
-Mất khoảng 2–3 phút.
+Script làm 5 việc: tạo môi trường ảo `.venv` → cài thư viện → tạo `config\config.yaml` + `config\buyer_rules.yaml` → **tạo tài khoản `admin`** (hỏi mật khẩu 2 lần, tối thiểu 8 ký tự có cả chữ và số) → tạo bộ dữ liệu demo trong `sample_data\`.
 
 > `Set-ExecutionPolicy -Scope Process` chỉ có tác dụng trong cửa sổ PowerShell đang mở, không thay đổi cài đặt bảo mật của máy.
 
@@ -55,29 +49,52 @@ Mất khoảng 2–3 phút.
 
 ## 4. Chạy thử với dữ liệu demo
 
-Trước khi đụng vào file thật, kiểm tra Bot hoạt động đúng:
-
 ```powershell
-.\scripts\run.bat check
-.\scripts\run.bat scan --dry-run
+.\scripts\run.bat run
 ```
 
-Kết quả mong đợi: 3 file, 6 sheet Follow Up, ~37 lô hàng, đủ các màu trạng thái. File `FollowUp_UserC_CauTrucThat.xlsx` có đúng cấu trúc 47 cột của file thật.
+Mở <http://127.0.0.1:8765> → đăng nhập `admin`. Automation quét lần đầu ngay khi khởi động: 3 file Follow Up demo, 6 sheet, ~37 lô hàng, đủ các màu trạng thái. Vào **Follow Up (lưới Excel)** để xem khung 47 cột.
+
+Chưa tạo admin ở bước 3? Có hai cách:
+- mở web **trên chính máy chủ** (`http://127.0.0.1:8765`) → trang *Thiết lập lần đầu* hiện ra, tạo Admin tại đó; hoặc
+- `.\scripts\run.bat user add admin --role admin`
+
+Dừng hệ thống: `Ctrl + C` trong cửa sổ đang chạy.
 
 ---
 
-## 5. Trỏ vào file Excel thật
+## 5. Tạo tài khoản cho cả phòng
 
-Mở `config\config.yaml` bằng Notepad hoặc VS Code. Sửa mục `files:`:
+Đăng nhập `admin` → **Quản trị › Người dùng** → *Thêm tài khoản*:
+
+| Vai trò | Dùng cho | Thấy gì |
+|---|---|---|
+| **Quản trị** | 1–2 người phụ trách hệ thống | mọi thứ, gồm người dùng / mapping / cài đặt / backup |
+| **Quản lý** | trưởng nhóm logistics | tất cả lô, phân công, Exception, nhập/xuất Excel, Automation |
+| **Người dùng** | nhân viên làm booking | chỉ lô được giao cho mình (chính hoặc dự phòng) |
+| **Chỉ xem** | kế toán, kho, sếp xem báo cáo | xem tất cả, không sửa |
+
+Hệ thống tự sinh **mật khẩu tạm** (hiện một lần trên màn hình) — gửi riêng cho người đó; họ bị bắt đổi mật khẩu ở lần đăng nhập đầu. Quên mật khẩu: Admin bấm **Đặt lại MK**, hoặc chạy `.\scripts\run.bat user passwd <tên>`.
+
+Có thể khai báo sẵn danh sách tài khoản trong `config\config.yaml` mục `users:` — hệ thống chỉ tạo tài khoản **chưa có mật khẩu**; Admin vẫn phải đặt mật khẩu tạm trên web.
+
+> Tên đăng nhập trong `users:` nên **trùng** với `owner:` của file Follow Up tương ứng (mục 6). Khi đó lô hàng đọc từ file của ai sẽ tự giao cho người đó.
+
+---
+
+## 6. Trỏ vào file Excel thật
+
+Mở `config\config.yaml` bằng Notepad / VS Code, sửa mục `files:`:
 
 ```yaml
 files:
-  - id: "F01-A"
+  - id: "F01-NAM"
     role: "follow_up"
-    display_name: "Follow Up - Nguyen Van A"
+    display_name: "Follow Up - Nam"
     path: "C:/Users/nam/OneDrive - Cong ty/Logistics/Follow Up - Nam.xlsx"
-    owner: "user_a"
-    write: true          # cho phép Bot tô màu dòng
+    owner: "nam.nguyen"          # = tên đăng nhập -> lô trong file tự giao cho người này
+    write: true                  # cho phép tô màu dòng theo trạng thái
+    color_skip_columns: ["A"]    # cột NO là công thức, đang tô vàng -> không tô đè
 
   - id: "F02"
     role: "weekly_planning"
@@ -87,195 +104,147 @@ files:
     write: true
 ```
 
-**Quy tắc viết đường dẫn:**
-
-| | |
+| Quy tắc đường dẫn | |
 |---|---|
-| Dùng `/` hoặc `\\` | `C:/Users/...` hoặc `C:\\Users\\...` — **một** dấu `\` sẽ lỗi |
-| Có dấu cách | vẫn viết bình thường, YAML chấp nhận khi có dấu `"` bao ngoài |
-| Có dấu tiếng Việt | được, file `config.yaml` lưu UTF-8 |
+| Dùng `/` hoặc `\\` | `C:/Users/...` — **một** dấu `\` sẽ lỗi |
+| Có dấu cách / tiếng Việt | được, miễn có `"` bao ngoài; file lưu UTF-8 |
+| OneDrive / SharePoint | dùng **đường dẫn đã sync về máy**, không dùng URL `https://` |
 
-### File Follow Up theo cấu trúc thật (47 cột)
+Tìm đường dẫn nhanh: mở file trong Excel → `File` → `Info` → `Copy path`, bỏ cặp `"` ở hai đầu. Nếu OneDrive để chế độ *Files On-Demand*: chuột phải file → `Always keep on this device`.
 
-```yaml
-  - id: "F01-NAM"
-    role: "follow_up"
-    path: "C:/Users/nam/OneDrive - Cong ty/Follow Up - Nam.xlsx"
-    owner: "nam"
-    write: true
-    color_skip_columns: ["A"]    # cột NO là công thức, đang tô vàng -> Bot không tô đè
-```
+**Buyer thật** khai báo trong `config\buyer_rules.yaml` (file này không lên GitHub). Buyer nào thiếu, lần quét đầu sẽ báo `EX008` kèm đúng tên. Cùng file có `forwarder_rules:` (Buyer + Mode + Dest → Forwarder).
 
-Rồi thêm **buyer thật** vào `config/buyer_rules.yaml` (file này không đưa lên GitHub). Buyer nào thiếu, lần quét đầu Bot sẽ báo `EX008` kèm đúng tên — ví dụ:
+**Rule tự phân công** trong `config\config.yaml` mục `assignment:` — ví dụ mọi lô SAMSUNG giao cho `user_b`, dự phòng `user_a`.
 
-```yaml
-  - code: "MA_BUYER"            # thay bằng mã buyer thật trong cột BUYER
-    canonical_name: "MA_BUYER"
-    co_required: true
-    co_form: "VK"                # CO FORM trong file vẫn được ưu tiên nếu có
-    shipment_group: "by_no_exfty"
-    declaration_rule: "one_per_shipment"
-```
-
-`bookingbot check` sẽ in thêm: file có bao nhiêu external link / defined name / công thức, cột nào là cột công thức, ô nào đang merge — để bạn biết Bot "nhìn" file thế nào trước khi cho ghi.
-
-### OneDrive / SharePoint
-
-Dùng **đường dẫn local đã sync về máy**, không dùng URL `https://`:
-
-```
-✓  C:/Users/nam/OneDrive - Cong ty/Logistics/WEEKLY PLANNING 2026.xlsx
-✗  https://congty.sharepoint.com/sites/Logistics/...
-```
-
-Bot ghi vào file local, OneDrive tự sync lên cloud. Cách này đơn giản và an toàn hơn gọi Microsoft Graph API.
-
-Tìm đường dẫn nhanh: mở file trong Excel → `File` → `Info` → bấm `Copy path`, rồi bỏ cặp dấu `"` ở hai đầu.
-
-> **Lưu ý về Files On-Demand:** nếu OneDrive để chế độ tiết kiệm dung lượng, file có thể chỉ là "vỏ" chưa tải về. Chuột phải file → `Always keep on this device` để Bot đọc được ổn định.
-
-### Người dùng và cơ sở
-
-```yaml
-users:
-  - name: "user_a"
-    display_name: "Nguyen Van A"
-    role: "user"
-
-site_rules:
-  default_site: "TGV"
-  rules:
-    - when: { field: "PIC", in: ["Nguyen Van A", "user_a"] }
-      site: "TGV"            # cơ sở 1
-    - when: { field: "PIC", in: ["Tran Thi B", "user_b"] }
-      site: "TDV"            # cơ sở 2
-```
-
----
-
-## 6. Kiểm tra nhận diện
+Kiểm tra trước khi chạy thật:
 
 ```powershell
-.\scripts\run.bat check
+.\scripts\run.bat check            # file nào có / thiếu / đang mở, sheet nào nhận là Follow Up, cột nào chưa map
+.\scripts\run.bat scan --dry-run   # hệ thống SẼ làm gì — không file nào bị đụng tới
 ```
-
-Lệnh này in ra:
-
-- **File Registry** — file nào tồn tại, file nào đang bị mở trong Excel
-- **Từng sheet** — sheet nào được nhận là Follow Up, confidence bao nhiêu, dòng header là dòng mấy
-- **Cột chưa map** — header Bot chưa hiểu
-
-Xử lý:
 
 | Vấn đề | Cách sửa |
 |---|---|
-| Sheet Follow Up bị đánh `bỏ qua` | Vào Dashboard → **Mapping** → chọn `Follow Up` → Lưu. Bot nhớ vĩnh viễn |
-| Sheet không phải Follow Up bị nhận nhầm | Cũng ở Mapping → chọn `Bỏ qua` |
-| Cột quan trọng chưa map | Thêm tên cột vào `aliases` của field tương ứng trong `config\field_mapping.yaml` |
+| Sheet Follow Up bị bỏ qua | Web → Quản trị › **Mapping** → chọn `Follow Up` → Lưu (nhớ vĩnh viễn) |
+| Cột quan trọng chưa map | Thêm tên cột vào `aliases` trong `config\field_mapping.yaml` |
+| Buyer thiếu rule (`EX008`) | Thêm vào `config\buyer_rules.yaml` |
 
-Ví dụ thêm alias:
+---
+
+## 7. Máy chủ nội bộ cho cả phòng (mạng LAN)
+
+1. Trong `config\config.yaml`:
+
+   ```yaml
+   web:
+     host: "0.0.0.0"     # nghe trên mọi card mạng
+     port: 8765
+   ```
+
+2. Mở cổng tường lửa — PowerShell **Run as administrator**:
+
+   ```powershell
+   .\scripts\open_firewall.ps1        # chỉ mở cho mạng Private/Domain, không mở cho Public
+   ```
+
+   Script in ra địa chỉ cho đồng nghiệp, ví dụ `http://192.168.1.20:8765`.
+
+3. Khởi động lại hệ thống (`Ctrl+C` rồi `.\scripts\run.bat run`, hoặc khởi động lại máy nếu đã cài chạy nền ở mục 8).
+
+4. Nên đặt **IP tĩnh** cho máy chủ (hoặc nhờ IT đặt DHCP reservation) để địa chỉ không đổi. Có tên miền nội bộ / IIS / nginx làm HTTPS thì đặt `auth.secure_cookie: true`.
+
+> Máy chủ phải **bật và đăng nhập Windows** trong giờ làm việc; Automation chỉ chạy khi hệ thống đang chạy. Tắt chế độ Sleep: *Settings → System → Power → Screen and sleep → Never* (khi cắm điện).
+
+---
+
+## 8. Chạy nền tự động khi đăng nhập Windows
+
+```powershell
+.\scripts\install_autostart.ps1          # đăng ký Scheduled Task "BookingControl"
+.\scripts\install_autostart.ps1 -Remove  # gỡ
+```
+
+Task chạy `scripts\start_server_hidden.vbs` — không hiện cửa sổ, tự khởi động lại nếu tiến trình bị tắt bất thường. Kiểm tra: *Task Scheduler → Task Scheduler Library → BookingControl*. Nhật ký: `data\logs\`.
+
+> Task chạy dưới tài khoản Windows đang đăng nhập để đọc được OneDrive của tài khoản đó. Không chạy dưới SYSTEM.
+
+---
+
+## 9. Email thông báo (tùy chọn)
+
+Mặc định thông báo hiện trên web (chuông 🔔 + Desktop Notification khi tab đang mở). Muốn gửi thêm email cho người phụ trách với cảnh báo CRITICAL:
 
 ```yaml
-  FinalCBM:
-    aliases: ["Final CBM", "CBM", "M3", "Final CBM (M3)", "Tong khoi", "Khoi hang"]
+notification:
+  channels: { web: true, email: true, console: true }
+  email:
+    enabled: true
+    smtp_host: "smtp.company.local"
+    smtp_port: 25
+    sender: "booking-control@company.com"
+    base_url: "http://192.168.1.20:8765"
 ```
+
+Mật khẩu SMTP (nếu có) đặt trong biến môi trường `BOOKINGCTL_SMTP_PASSWORD`, **không** ghi vào file cấu hình. Email lấy từ hồ sơ từng người (Tài khoản của tôi).
 
 ---
 
-## 7. Chạy thật
+## 10. Sao lưu
 
-```powershell
-.\scripts\run.bat scan --dry-run   # LUÔN chạy bước này trước
-.\scripts\run.bat scan             # ghi thật
-```
+| Cần sao lưu | Ở đâu | Gợi ý |
+|---|---|---|
+| Database | `data\booking_control.db` | copy hằng ngày sang ổ khác / NAS (dừng hệ thống hoặc copy lúc ít người dùng) |
+| Cấu hình | `config\config.yaml`, `config\buyer_rules.yaml` | copy mỗi khi sửa |
+| Bản sao file Excel đích trước mỗi lần ghi | `data\backups\` | tự động, giữ 20 bản/file; khôi phục ở Quản trị › Backup |
 
-Dry Run in ra chính xác Bot **sẽ** làm gì: thêm bao nhiêu dòng, sửa dòng nào, đổi màu bao nhiêu dòng. Không file nào bị đụng tới.
-
-Đọc kỹ báo cáo, thấy hợp lý rồi mới bỏ `--dry-run`.
-
----
-
-## 8. Chạy ngầm hằng ngày
-
-```powershell
-.\scripts\run.bat run
-```
-
-Bot sẽ:
-- Hiện icon ở **khay hệ thống** (góc phải thanh taskbar, có thể phải bấm mũi tên `^`)
-- Quét mỗi 3 giờ (chỉnh được 1–4 giờ)
-- Mở dashboard tại <http://127.0.0.1:8765>
-- Bật popup khi có deadline gấp, trong khung giờ 08:00–16:00
-
-Chuột phải vào icon: **Quét ngay** · **Dry Run** · **Mở Dashboard** · **Tạm dừng** · **Thoát**.
-
-### Tự khởi động cùng Windows
-
-```powershell
-.\scripts\install_autostart.ps1
-```
-
-Đăng ký một scheduled task chạy lúc đăng nhập, ẩn cửa sổ console, tự chạy lại nếu Bot tắt bất thường.
-
-Gỡ bỏ: `.\scripts\install_autostart.ps1 -Remove`
+Chuyển sang SQL Server / PostgreSQL khi nhiều người dùng: đổi `database.url` (xem ví dụ trong `config.example.yaml`), cài driver (`pyodbc` hoặc `psycopg`), khởi động lại — bảng được tạo tự động.
 
 ---
 
-## 9. Phát cho đồng nghiệp (không cần cài Python)
+## 11. Phát bản chạy không cần Python (tùy chọn)
 
 ```powershell
 .\scripts\build_exe.ps1
 ```
 
-Tạo ra `dist\BookingBot\` — copy cả thư mục sang máy khác, sửa `config\config.yaml` cho đúng đường dẫn của người đó, rồi bấm **`Chạy Bot.bat`**.
+Tạo `dist\BookingControl\` — copy cả thư mục sang máy chủ khác, sửa `config\config.yaml`, tạo admin (`BookingControl.exe user add admin --role admin`), bấm **`Chay Booking Control.bat`**.
 
-> Mỗi người nên có `config.yaml` riêng (file Follow Up riêng), nhưng **dùng chung** `field_mapping.yaml` và `buyer_rules.yaml` để rule nghiệp vụ đồng nhất.
+---
+
+## 12. Nâng cấp từ v1 (Booking Deadline Bot)
+
+1. Dừng bản cũ, gỡ task cũ: trong thư mục cũ chạy `.\scripts\install_autostart.ps1 -Remove`.
+2. Cài bản mới vào thư mục mới (mục 2–3). Copy `config\config.yaml` và `config\buyer_rules.yaml` cũ sang, rồi thêm các mục mới từ `config.example.yaml`: `assignment`, `auth`, `jobs`, `notification.email`, `web.host` (các mục `toast` / `popup` / `tray_balloon` cũ không còn dùng — xóa đi).
+3. Database v1 dùng tiếp được (copy `data\bookingbot.db` → `data\booking_control.db`): cột mới tự thêm khi khởi động. Cột `bot_status` / `last_bot_color` cũ bị bỏ qua — trạng thái được tính lại ngay ở lần quét đầu.
+4. Tạo tài khoản (mục 5). Lần quét đầu tự giao lô cho chủ file Follow Up.
 
 ---
 
 ## Lỗi thường gặp
 
-<table>
-<tr><th>Thông báo</th><th>Nguyên nhân &amp; cách sửa</th></tr>
-
-<tr><td><code>python : The term 'python' is not recognized</code></td>
-<td>Python chưa vào PATH. Cài lại Python, tích ô <code>Add python.exe to PATH</code>.</td></tr>
-
-<tr><td><code>cannot be loaded because running scripts is disabled</code></td>
-<td>Chạy <code>Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass</code> trước, trong cùng cửa sổ PowerShell.</td></tr>
-
-<tr><td><code>Khong tim thay file Follow Up</code></td>
-<td>Sai đường dẫn trong <code>config.yaml</code>. Mở file trong Excel → File → Info → Copy path, dán lại và đổi <code>\</code> thành <code>/</code>.</td></tr>
-
-<tr><td><code>File van bi khoa sau 3 lan thu</code></td>
-<td>Ai đó đang mở file đích trong Excel. Bot đã đưa vào Pending Queue và sẽ tự ghi ở lần quét sau — <b>không mất dữ liệu</b>. Đóng file để Bot ghi ngay.</td></tr>
-
-<tr><td><code>DATA CHANGED / CONFLICT</code></td>
-<td>Bạn sửa file trong lúc Bot đang xử lý. Bot đã dừng, <b>không ghi đè</b>. Kiểm tra Exception Center rồi bấm Quét ngay.</td></tr>
-
-<tr><td>Sheet Follow Up không được nhận</td>
-<td>Chạy <code>run.bat check</code> xem confidence. Dưới 80% → vào Dashboard → Mapping xác nhận thủ công một lần.</td></tr>
-
-<tr><td>Không thấy icon khay hệ thống</td>
-<td>Bấm mũi tên <code>^</code> góc phải taskbar. Muốn ghim: Settings → Personalization → Taskbar → Other system tray icons.</td></tr>
-
-<tr><td>Dashboard không mở được</td>
-<td>Cổng 8765 đang bị chiếm. Đổi <code>web.port</code> trong <code>config.yaml</code>, ví dụ <code>8766</code>.</td></tr>
-
-<tr><td>Không có popup nào</td>
-<td>Ngoài khung giờ 08:00–16:00 → Bot dồn lại, phát khi tới giờ. Xem ngay tại Dashboard → Thông báo.</td></tr>
-
-<tr><td><code>ModuleNotFoundError: No module named 'booking_bot'</code></td>
-<td>Chạy sai Python. Luôn dùng <code>scripts\run.bat</code> thay vì gõ <code>python</code> trực tiếp.</td></tr>
-</table>
+| Thông báo | Nguyên nhân & cách sửa |
+|---|---|
+| `python : The term 'python' is not recognized` | Python chưa vào PATH — cài lại, tích `Add python.exe to PATH` |
+| `running scripts is disabled` | Chạy `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` trong cùng cửa sổ |
+| Đồng nghiệp không mở được web | `web.host` chưa là `"0.0.0.0"`; chưa chạy `open_firewall.ps1`; mạng Wi-Fi đang để *Public* (đổi sang *Private*); máy chủ đang Sleep |
+| `Chưa có Admin có mật khẩu` khi khởi động | Mở web trên chính máy chủ để tạo, hoặc `run.bat user add admin --role admin` |
+| Trang *Thiết lập lần đầu* báo chỉ mở trên máy chủ | Đúng — vì an toàn; mở bằng `http://127.0.0.1:8765` trên máy chủ |
+| `Sai mật khẩu quá nhiều lần` | Chờ 10 phút, hoặc Admin đặt lại mật khẩu |
+| `Không tìm thấy file Follow Up` | Sai đường dẫn trong `config.yaml` — lấy lại bằng File → Info → Copy path |
+| `File vẫn bị khóa sau 3 lần thử` | Ai đó đang mở file đích; hệ thống đưa vào hàng chờ và tự ghi lần sau — **không mất dữ liệu** |
+| `DATA CHANGED / CONFLICT` (EX007) | Có người sửa file trong lúc hệ thống đang ghi; hệ thống đã dừng, không ghi đè |
+| Ô trên lưới báo *vừa được người khác cập nhật* | Hai người cùng sửa một dòng; dòng đã tải lại bản mới nhất, nhập lại nếu cần |
+| Cổng 8765 đang bị chiếm | Đổi `web.port`, ví dụ `8766` (và mở lại tường lửa với `-Port 8766`) |
+| `ModuleNotFoundError: booking_control` | Chạy sai Python — luôn dùng `scripts\run.bat` |
 
 ---
 
 ## Gỡ cài đặt
 
 ```powershell
-.\scripts\install_autostart.ps1 -Remove   # gỡ tự khởi động
-Remove-Item -Recurse -Force .venv, data   # xóa môi trường ảo + database
+.\scripts\install_autostart.ps1 -Remove
+.\scripts\open_firewall.ps1 -Remove        # Run as administrator
+Remove-Item -Recurse -Force .venv, data    # xóa môi trường ảo + database
 ```
 
-Bot **không** ghi gì vào Registry và không cài gì ra ngoài thư mục dự án. Các file Excel của bạn giữ nguyên; các bản backup nằm trong `data\backups\` — xóa hay giữ tùy bạn.
+Hệ thống không ghi gì vào Registry và không cài gì ra ngoài thư mục dự án. File Excel của bạn giữ nguyên.

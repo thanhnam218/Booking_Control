@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from openpyxl import Workbook, load_workbook
 
-from booking_bot.excel.detector import detect_sheet, detect_workbook
-from booking_bot.excel.mapping import FieldDictionary, HeaderMapper, col_letter
+from booking_control.excel.detector import detect_sheet, detect_workbook
+from booking_control.excel.mapping import FieldDictionary, HeaderMapper, col_letter
 
 
 def test_col_letter():

@@ -1,5 +1,5 @@
 <#
-    CAI DAT BOOKING DEADLINE BOT TREN WINDOWS
+    CAI DAT BOOKING CONTROL TREN WINDOWS
     -----------------------------------------
     Mo PowerShell tai thu muc du an roi chay:
 
@@ -13,7 +13,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-Write-Host "=== Booking Deadline Bot - cai dat ===" -ForegroundColor Cyan
+Write-Host "=== Booking Control - cai dat ===" -ForegroundColor Cyan
 
 # --- 1. Kiem tra Python ------------------------------------------------------
 $py = $null
@@ -47,12 +47,16 @@ Write-Host "`nCai thu vien (co the mat 1-3 phut) ..." -ForegroundColor Yellow
 
 # --- 4. Config ---------------------------------------------------------------
 Write-Host "`nTao file cau hinh ..." -ForegroundColor Yellow
-& $pyExe -m booking_bot init
+& $pyExe -m booking_control init
+
+# --- 4b. Tai khoan Admin dau tien --------------------------------------------
+Write-Host "`nTao tai khoan Admin (dang nhap web). Nhap mat khau 2 lan:" -ForegroundColor Yellow
+& $pyExe -m booking_control user add admin --role admin --display-name "Quan tri"
 
 # --- 5. Du lieu demo ---------------------------------------------------------
 if (-not (Test-Path "sample_data\FollowUp_UserA.xlsx")) {
     Write-Host "`nTao bo du lieu demo ..." -ForegroundColor Yellow
-    & $pyExe -m booking_bot sample
+    & $pyExe -m booking_control sample
 }
 
 Write-Host "`n=== XONG ===" -ForegroundColor Green
@@ -67,8 +71,10 @@ Buoc tiep theo:
   2. Kiem tra nhan dien sheet:      .\scripts\run.bat check
   3. Chay thu khong ghi file:       .\scripts\run.bat scan --dry-run
   4. Chay that:                     .\scripts\run.bat scan
-  5. Chay ngam hang ngay:           .\scripts\run.bat run
+  5. Chay he thong (web + tu dong):  .\scripts\run.bat run
+     roi mo trinh duyet: http://127.0.0.1:8765  (dang nhap admin)
+  6. Cho dong nghiep dung chung:    xem docs\INSTALL.md muc 'May chu noi bo (LAN)'
      (Dashboard: http://127.0.0.1:8765)
 
-  Cho Bot tu khoi dong cung Windows:  .\scripts\install_autostart.ps1
+  Cho Automation tu khoi dong cung Windows:  .\scripts\install_autostart.ps1
 "@

@@ -34,10 +34,10 @@ jobs:
         run: ruff check src tests scripts
 
       - name: Test
-        run: pytest -q --cov=booking_bot --cov-report=term-missing
+        run: pytest -q --cov=booking_control --cov-report=term-missing
 
       - name: Chay thu end-to-end (dry run)
         run: |
-          python -m booking_bot sample
-          python -m booking_bot check
-          python -m booking_bot scan --dry-run
+          python -m booking_control sample
+          python -m booking_control check
+          python -m booking_control scan --dry-run

@@ -1,0 +1,93 @@
+# =============================================================================
+# KHUNG MAU FOLLOW UP 47 COT + FIELD OWNERSHIP MATRIX
+# =============================================================================
+# File nay dinh nghia "khung mau giong file Follow Up" dung chung cho:
+#   - Luoi Follow Up tren web (thu tu cot, do rong, kieu du lieu, cot cong thuc)
+#   - Xuat Excel (47 cot dung thu tu + cac cot he thong o cuoi)
+#   - Quyen sua tung cot (Field Ownership Matrix - SRS v2 muc 35)
+#
+# Quyen cua tung cot:
+#   user:    edit   = Nguoi dung sua duoc (tren lo hang duoc giao)
+#            review = sua duoc nhung tao muc "can Quan ly xem lai" trong Exception Center
+#            view   = chi xem
+#   manager: edit | view      (admin luon co quyen nhu manager)
+#   auto:    true = tu dong hoa (Outlook, rule) duoc cap nhat cot nay
+#                   KHI User/Quan ly chua sua tay (USER > AUTOMATION)
+#   source:  EXCEL | OUTLOOK | RULE | FORMULA | USER - nguon du lieu chinh (de hien thi)
+#
+# Cot cong thuc (formula): tinh giong het file Excel that. Nguoi co quyen "edit" go de
+# gia tri tay -> gia tri tay thang (ghi nhan override); xoa trang -> cong thuc chay lai.
+# Bieu thuc chi gom: so, + - * /, ( ), ROUND(x, n) va [TenTruong].
+# =============================================================================
+
+version: 1
+
+# Co dinh cot A..J va dong tieu de - giong file that (freeze_panes = K2)
+freeze_columns: 10
+header_fill: "FFD9D9D9"
+no_column_fill: "FFFFFF00"      # cot NO to vang giong file that; de "" neu khong muon
+
+formulas:
+  ShipmentNo:    { kind: invoice_suffix }        # tham so lay tu field_mapping.yaml > derived_fields
+  DiscountPrice: { expr: "ROUND([Price]*0.95,2)" }
+  CdfAmount:     { expr: "[DiscountPrice]*[FinalExportQty]" }
+  TsnAmount:     { expr: "[Price]*[FinalExportQty]" }
+
+columns:
+  - { header: "NO",                  field: ShipmentNo,     type: int,    width: 6,  user: view,   manager: edit, source: FORMULA }
+  - { header: "EX-FACT\nDATE",       field: ExFtyDate,      type: date,   width: 12, user: review, manager: edit, source: EXCEL, excel_format: "mm-dd-yy", required: true }
+  - { header: "BUYER",               field: Buyer,          type: text,   width: 10, user: review, manager: edit, source: EXCEL, required: true }
+  - { header: "CONT \nTYPE",         field: ContainerType,  type: text,   width: 7,  user: edit,   manager: edit, source: USER, merge_group: true }
+  - { header: "MODE",                field: ShipMode,       type: text,   width: 6,  user: edit,   manager: edit, source: EXCEL, choices: ["S", "A", "SEA", "AIR", "LCL"] }
+  - { header: "DEST",                field: Destination,    type: text,   width: 6,  user: edit,   manager: edit, source: EXCEL }
+  - { header: "JO",                  field: JO,             type: text,   width: 16, user: review, manager: edit, source: EXCEL, required: true }
+  - { header: "GO",                  field: GO,             type: text,   width: 12, user: edit,   manager: edit, source: EXCEL }
+  - { header: "PO",                  field: PO,             type: text,   width: 13, user: edit,   manager: edit, source: EXCEL }
+  - { header: "STYLE",               field: Style,          type: text,   width: 13, user: edit,   manager: edit, source: EXCEL }
+  - { header: "Description",         field: Description,    type: text,   width: 30, user: edit,   manager: edit, source: EXCEL }
+  - { header: "ORDER \nQTY",         field: OrderQty,       type: number, width: 7,  user: review, manager: edit, source: EXCEL }
+  - { header: "INVOICE",             field: Invoice,        type: text,   width: 12, user: edit,   manager: edit, source: USER }
+  - { header: "FinaL \nQty",         field: FinalExportQty, type: number, width: 10, user: edit,   manager: edit, source: USER }
+  - { header: "CTNS",                field: FinalCartonQty, type: number, width: 7,  user: edit,   manager: edit, source: USER }
+  - { header: "G.W",                 field: GrossWeight,    type: number, width: 10, user: edit,   manager: edit, source: USER }
+  - { header: "CBM",                 field: FinalCBM,       type: number, width: 9,  user: edit,   manager: edit, source: USER }
+  - { header: "ETD",                 field: ETD,            type: date,   width: 8,  user: edit,   manager: edit, source: OUTLOOK, auto: true, excel_format: "d-mmm" }
+  - { header: "ETA",                 field: ETA,            type: date,   width: 8,  user: edit,   manager: edit, source: OUTLOOK, auto: true, excel_format: "d-mmm" }
+  - { header: "Color code",          field: ColorCode,      type: text,   width: 10, user: edit,   manager: edit, source: EXCEL }
+  - { header: "Cust Color",          field: CustColor,      type: text,   width: 10, user: edit,   manager: edit, source: EXCEL }
+  - { header: "BOOKING NO",          field: BookingNo,      type: text,   width: 15, user: edit,   manager: edit, source: OUTLOOK, auto: true }
+  - { header: "100% \nFOB",          field: Price,          type: number, width: 7,  user: review, manager: edit, source: EXCEL }
+  - { header: "95%\nFOB",            field: DiscountPrice,  type: number, width: 8,  user: view,   manager: view, source: FORMULA }
+  - { header: "CDF\nAMOUNT",         field: CdfAmount,      type: number, width: 10, user: view,   manager: view, source: FORMULA }
+  - { header: "TSN AMOUNT",          field: TsnAmount,      type: number, width: 10, user: view,   manager: view, source: FORMULA }
+  - { header: "CURRENCY",            field: Currency,       type: text,   width: 9,  user: edit,   manager: edit, source: EXCEL }
+  - { header: "HS CODE",             field: CustomsCode,    type: text,   width: 11, user: edit,   manager: edit, source: RULE }
+  - { header: "CDF#",                field: CDF,            type: text,   width: 15, user: edit,   manager: edit, source: USER }
+  - { header: "BL#",                 field: BL,             type: text,   width: 15, user: edit,   manager: edit, source: USER }
+  - { header: "VESSEL",              field: Vessel,         type: text,   width: 14, user: edit,   manager: edit, source: OUTLOOK, auto: true }
+  - { header: "E-SHIPMENT",          field: EShipment,      type: text,   width: 14, user: edit,   manager: edit, source: USER }
+  - { header: " TERM",               field: Term,           type: text,   width: 7,  user: edit,   manager: edit, source: EXCEL }
+  - { header: "VAT INV",             field: VatInvoice,     type: text,   width: 9,  user: edit,   manager: edit, source: USER }
+  - { header: "VAT DATE",            field: VatDate,        type: date,   width: 10, user: edit,   manager: edit, source: USER, excel_format: "dd/mm/yyyy" }
+  - { header: "VAT AMOUNT",          field: VatAmount,      type: number, width: 12, user: edit,   manager: edit, source: USER }
+  - { header: "SQ",                  field: SQ,             type: text,   width: 8,  user: edit,   manager: edit, source: USER }
+  - { header: "Booking \ndate",      field: BookingDate,    type: date,   width: 9,  user: edit,   manager: edit, source: OUTLOOK, auto: true, excel_format: "d-mmm" }
+  - { header: "Cargos closing time", field: ClosingTime,    type: text,   width: 14, user: edit,   manager: edit, source: OUTLOOK, auto: true }
+  - { header: "PORT/WH",             field: Port,           type: text,   width: 10, user: edit,   manager: edit, source: EXCEL }
+  - { header: "CO NO",               field: CoNo,           type: text,   width: 18, user: edit,   manager: edit, source: USER }
+  - { header: "CO FORM",             field: CoForm,         type: text,   width: 9,  user: edit,   manager: edit, source: RULE }
+  - { header: "T/C CO",              field: CoCheck,        type: text,   width: 9,  user: edit,   manager: edit, source: USER }
+  - { header: "CO granted date",     field: CoGrantedDate,  type: date,   width: 12, user: edit,   manager: edit, source: USER, excel_format: "dd/mm/yyyy" }
+  - { header: "CONT ",               field: ContainerNo,    type: text,   width: 14, user: edit,   manager: edit, source: USER }
+  - { header: "SEAL",                field: SealNo,         type: text,   width: 12, user: edit,   manager: edit, source: USER }
+  - { header: "REMARK",              field: Remark,         type: text,   width: 26, user: edit,   manager: edit, source: USER }
+
+# Cot he thong them vao CUOI khi xuat Excel (47 cot goc giu nguyen thu tu - SRS v2 muc 20)
+system_columns:
+  - { header: "ASSIGNED USER",   key: assigned_to,      width: 14 }
+  - { header: "BACKUP OWNER",    key: backup_owner,     width: 14 }
+  - { header: "FORWARDER",       key: forwarder,        width: 14 }
+  - { header: "BOOKING STATUS",  key: booking_status,   width: 14 }
+  - { header: "SHIPMENT STATUS", key: effective_status, width: 14 }
+  - { header: "DEADLINE STATUS", key: deadline_status,  width: 18 }
+  - { header: "LAST UPDATED",    key: updated_at,       width: 17 }

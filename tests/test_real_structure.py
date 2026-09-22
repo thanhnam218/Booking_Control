@@ -14,15 +14,15 @@ import pytest
 from openpyxl import load_workbook
 from sqlalchemy import select
 
-from booking_bot.core.container import parse_container_type
-from booking_bot.core.normalize import derive_invoice_suffix, find_keyword
-from booking_bot.core.status import evaluate
-from booking_bot.db import session_scope
-from booking_bot.db.models import ContainerAllocation, ExceptionRecord, Shipment, UserOverride
-from booking_bot.excel.mapping import HeaderMapper
-from booking_bot.excel.reader import read_workbook
-from booking_bot.excel.writer import ColorOp, ExcelTargetWriter, FollowUpColorWriter
-from booking_bot.excel.xlsx_patch import (
+from booking_control.core.container import parse_container_type
+from booking_control.core.normalize import derive_invoice_suffix, find_keyword
+from booking_control.core.status import evaluate
+from booking_control.db import session_scope
+from booking_control.db.models import ContainerAllocation, ExceptionRecord, Shipment, UserOverride
+from booking_control.excel.mapping import HeaderMapper
+from booking_control.excel.reader import read_workbook
+from booking_control.excel.writer import ColorOp, ExcelTargetWriter, FollowUpColorWriter
+from booking_control.excel.xlsx_patch import (
     XlsxPackage,
     inspect_package,
     normalize_formula,
@@ -75,8 +75,8 @@ def alloc_of(jo: str) -> ContainerAllocation:
 def test_all_real_headers_map_with_full_confidence(dictionary):
     m = HeaderMapper(dictionary).map_row(REAL_HEADERS, 1)
     got = {x.source_header.replace("\n", " ").strip(): x.canonical_field for x in m.matches}
-    assert len(m.matches) == 46
-    assert m.unmatched_headers == ["SQ"]
+    assert len(m.matches) == 47
+    assert m.unmatched_headers == []
     assert not m.ambiguous
     assert all(x.confidence == 1.0 for x in m.matches)
     expected = {
@@ -84,7 +84,7 @@ def test_all_real_headers_map_with_full_confidence(dictionary):
         "INVOICE": "Invoice", "FinaL Qty": "FinalExportQty", "CTNS": "FinalCartonQty",
         "100% FOB": "Price", "95% FOB": "DiscountPrice", "HS CODE": "CustomsCode",
         "CDF#": "CDF", "BL#": "BL", "BOOKING NO": "BookingNo", "CONT": "ContainerNo",
-        "SEAL": "SealNo", "CO FORM": "CoForm", "REMARK": "Remark",
+        "SEAL": "SealNo", "CO FORM": "CoForm", "REMARK": "Remark", "SQ": "SQ",
     }
     for header, fld in expected.items():
         assert got[header] == fld, header
@@ -267,7 +267,7 @@ def test_user_container_shortage_is_critical(scanned):
 def test_pre_invoice_row_grouped_by_booking(scanned):
     sh = ship("26V09005KR01")
     assert not sh.shipment_no
-    assert alloc_of("26V09005KR01").container_type == "1x40DC"   # 30 CBM, Bot de xuat
+    assert alloc_of("26V09005KR01").container_type == "1x40DC"   # 30 CBM, Automation de xuat
 
 
 def test_co_form_taken_from_file(scanned):
@@ -296,7 +296,7 @@ def test_key_survives_invoice_arriving_later(engine, real_file):
 
 
 # ---------------------------------------------------------------------------
-# 4. Mau User to tay trong Excel (USER > BOT)
+# 4. Mau User to tay trong Excel (USER > AUTO)
 # ---------------------------------------------------------------------------
 
 
@@ -316,12 +316,12 @@ def test_user_paints_red_then_back(engine, real_file):
     _paint(real_file, 2, "FFFF0000")              # User to do dong 2 = HOLD
     engine.run_scan(today=TODAY, deliver_notifications=False)
     sh = ship("26V09001KR01")
-    assert sh.bot_status == "GREEN" and sh.effective_status == "RED"
+    assert sh.auto_status == "GREEN" and sh.effective_status == "RED"
 
     engine.run_scan(today=TODAY, deliver_notifications=False)   # quet lai: van RED, khong dao qua lai
     assert ship("26V09001KR01").effective_status == "RED"
 
-    _paint(real_file, 2, "FF92D050")              # User to lai mau xanh cua Bot -> tra quyen cho Bot
+    _paint(real_file, 2, "FF92D050")              # User to lai mau xanh cua Automation -> tra quyen cho Automation
     engine.run_scan(today=TODAY, deliver_notifications=False)
     assert ship("26V09001KR01").effective_status == "GREEN"
     with session_scope() as s:
@@ -334,7 +334,7 @@ def test_unknown_user_color_is_left_alone(engine, real_file):
     _paint(real_file, 3, "FF7F7F7F")              # mau khong co trong bang trang thai
     engine.run_scan(today=TODAY, deliver_notifications=False)
     ws = load_workbook(real_file).worksheets[0]
-    assert ws["G3"].fill.fgColor.rgb == "FF7F7F7F"  # Bot khong to de
+    assert ws["G3"].fill.fgColor.rgb == "FF7F7F7F"  # Automation khong to de
 
 
 # ---------------------------------------------------------------------------

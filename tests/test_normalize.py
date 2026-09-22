@@ -6,7 +6,7 @@ import datetime as dt
 
 import pytest
 
-from booking_bot.core.normalize import (
+from booking_control.core.normalize import (
     clean_text,
     has_value,
     is_blank,
@@ -38,7 +38,7 @@ def test_parse_date_formats(raw, expected):
 
 
 def test_parse_date_invalid_is_not_guessed():
-    """SRS muc 56: Bot khong tu doan du lieu sai."""
+    """SRS muc 56: Automation khong tu doan du lieu sai."""
     r = parse_date("31/02/2026")
     assert r.value is None
     assert r.state in ("INVALID", "NEED_REVIEW")

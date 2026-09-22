@@ -55,7 +55,7 @@ buyers:
     aliases: ["DEF GMBH", "DEF EUROPE"]
     co_required: true
     co_form: "Form E"
-    # Buyer nay luon phai User duyet container -> Bot khong tu quyet
+    # Buyer nay luon phai User duyet container -> Automation khong tu quyet
     container_rule: "user_review"
     shipment_group: "by_no"
     invoice_rule: "multi"
@@ -121,3 +121,21 @@ hold_reasons:
   - code: "OTHER"
     label: "Khac (bat buoc nhap chi tiet)"
     require_detail: true
+
+# -----------------------------------------------------------------------------
+# BUYER - FORWARDER RULE (SRS v2 muc 9-10)
+# -----------------------------------------------------------------------------
+# BUYER + MODE + DEST + PORT/WH (+ khoang EX-FACT) -> FORWARDER
+#   1 rule khop      -> AUTO_ASSIGNED
+#   nhieu rule khop  -> NEED_CONFIRM  (he thong KHONG tu chon)
+#   khong co rule    -> NOT_ASSIGNED
+# Nguoi dung chot forwarder tay tren trang lo hang -> MANUAL, Automation khong doi nua.
+# Dieu kien de trong = khong xet. Ten forwarder duoi day la vi du.
+forwarder_rules:
+  - { buyer: ["ABC"], mode: ["SEA"], forwarder: "FWD-OCEAN-1" }
+  - { buyer: ["ABC"], mode: ["AIR"], forwarder: "FWD-AIR-1" }
+  - { buyer: ["XYZ"], forwarder: "FWD-OCEAN-2" }
+  - { buyer: ["KRB"], mode: ["SEA"], dest: ["KR"], forwarder: "FWD-KR-1" }
+  - { buyer: ["IKEA"], mode: ["SEA"], forwarder: "FWD-OCEAN-1" }
+  - { buyer: ["IKEA"], mode: ["SEA"], forwarder: "FWD-OCEAN-2" }   # 2 rule -> NEED_CONFIRM
+  - { buyer: ["SAMSUNG"], forwarder: "FWD-AIR-1" }

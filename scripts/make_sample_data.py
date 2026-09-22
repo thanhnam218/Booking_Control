@@ -1,7 +1,7 @@
 """Tao bo 5 file Excel DEMO giong cau truc that de chay thu ngay.
 
     python scripts/make_sample_data.py           -> ./sample_data/
-    bookingbot sample                            -> tuong duong
+    bookingctl sample                            -> tuong duong
 
 Bo du lieu nay co chu dich chua cac tinh huong kho:
   - Moi sheet Buyer co ten header hoi khac nhau (ExFtyDate / EX FTY DATE / Job Order...)
@@ -10,7 +10,7 @@ Bo du lieu nay co chu dich chua cac tinh huong kho:
   - CBM ghi "25?" -> NEED_REVIEW
   - Ngay ghi sai -> Exception
   - Lo dang HOLD, lo da CANCEL, lo xuat mot phan
-  - Sheet Summary / Report khong phai Follow Up -> Bot phai tu bo qua
+  - Sheet Summary / Report khong phai Follow Up -> Automation phai tu bo qua
   - FollowUp_UserC_CauTrucThat.xlsx: mo phong DUNG cau truc file that (47 cot,
     cong thuc NO/FOB, o merge CONT TYPE) voi du lieu gia
 """
@@ -306,7 +306,7 @@ def build_follow_up_real(path: Path, today: dt.date) -> Path:
         "308900000100", "DEMO0000100", d(-3), "DEMU7654321", "SL000000", ctype="1x20")
     # NO bi go de bang gia tri 999 (dung ra 902) -> EX013
     add("TEGV03010", d(25), "26V09010KR01", "S26V09010", 18.0, 2500, 35, 500.0, 9.0, no_mode="typed:999")
-    # Dong moi quen keo cong thuc NO -> EX013, Bot tu tinh NO = 903 tu invoice
+    # Dong moi quen keo cong thuc NO -> EX013, Automation tu tinh NO = 903 tu invoice
     add("TEGV03011", d(26), "26V09011KR01", "S26V09011", 19.0, 2600, 36, 520.0, 9.0, no_mode="empty")
 
     wb = Workbook()
@@ -364,7 +364,7 @@ def _add_cached_values(path: Path, sheet: str, rows: list[dict]) -> None:
     import sys as _sys
 
     _sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-    from booking_bot.excel.xlsx_patch import XlsxPackage  # noqa: E402
+    from booking_control.excel.xlsx_patch import XlsxPackage  # noqa: E402
 
     pkg = XlsxPackage(path)
     sh = pkg.sheet(sheet)

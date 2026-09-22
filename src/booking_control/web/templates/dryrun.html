@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Dry Run</h2>
+<p class="page-sub">Xem truoc Automation SE lam gi - khong ghi bat ky file nao, khong ban thong bao.</p>
+
+<div class="card">
+  <h3>Bao cao</h3>
+  <pre>{{ report }}</pre>
+</div>
+
+{% if data.writes %}
+<div class="card">
+  <h3>Chi tiet thao tac ghi</h3>
+  {% for w in data.writes %}
+    <h4 class="mono">{{ w.file }} &middot; +{{ w.insert }} ~{{ w.update }} ={{ w.skip }}</h4>
+    {% if w.error %}<p class="sev-CRITICAL">{{ w.error }}</p>{% endif %}
+    <pre>{{ w.ops|join('\n') }}</pre>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if data.merge_suggestions %}
+<div class="card">
+  <h3>Goi y gop lo (cho User quyet dinh)</h3>
+  <table>
+    <thead><tr><th>Buyer</th><th>JO</th><th>Ngay xuat</th><th class="right">Tong CBM</th><th>Cach nhau</th></tr></thead>
+    <tbody>
+    {% for m in data.merge_suggestions %}
+      <tr><td>{{ m.buyer }}</td><td class="mono">{{ m.jos|join(' + ') }}</td>
+          <td class="mono">{{ m.exfty_dates|join(' / ') }}</td>
+          <td class="right mono">{{ m.total_cbm }}</td><td>{{ m.gap_days }} ngay</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if data.split_jo %}
+<div class="card">
+  <h3>JO tach nhieu ngay xuat (binh thuong, khong phai loi)</h3>
+  <table>
+    <thead><tr><th>JO</th><th>Cac ngay xuat</th></tr></thead>
+    <tbody>
+    {% for s in data.split_jo %}
+      <tr><td class="mono">{{ s.jo }}</td><td class="mono">{{ s.exfty_dates|join(', ') }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<form method="post" action="/actions/scan">
+  <button type="submit">Da xem xong - Chay that bay gio</button>
+</form>
+{% endblock %}

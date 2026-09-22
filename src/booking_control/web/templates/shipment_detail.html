@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{{ sh.jo or sh.code }} <span class="pill {{ sh.status }}">{{ sh.status }}</span>
+  {% if sh.archived %}<span class="tag">Đã lưu trữ</span>{% endif %}</h2>
+<p class="page-sub">{{ sh.code }} &middot; NO {{ sh.no or '—' }} &middot; {{ sh.buyer }} &middot;
+  EX-FACT {{ sh.exfty.strftime('%d/%m/%Y') if sh.exfty else '—' }} {% if sh.deadline %}({{ sh.deadline }}){% endif %}
+  &middot; nguồn: {{ sh.source }} &middot; phiên bản {{ sh.version }}
+  {% if sh.updated_by %}&middot; sửa lần cuối: {{ sh.updated_by }} {{ sh.updated_at.strftime('%d/%m %H:%M') if sh.updated_at else '' }}{% endif %}</p>
+
+<div class="toolbar">
+  <a class="btn" href="/followup?q={{ sh.jo }}">Sửa trên lưới Follow Up</a>
+  {% if me.can('shipments.archive') %}
+  <form method="post" action="/shipments/{{ sh.code }}/archive">
+    <input type="hidden" name="archived" value="{{ 'no' if sh.archived else 'yes' }}">
+    <button class="ghost" type="submit">{{ 'Bỏ lưu trữ' if sh.archived else 'Lưu trữ lô này' }}</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="two">
+  <div class="card">
+    <h3>Phụ trách &amp; Forwarder</h3>
+    <dl class="kv">
+      <dt>Phụ trách chính</dt><dd>{{ sh.assigned_to or '— chưa phân công —' }}</dd>
+      <dt>Dự phòng</dt><dd>{{ sh.backup_owner or '—' }}</dd>
+      <dt>Forwarder</dt><dd>{{ sh.forwarder or '—' }} {% if sh.forwarder_status %}<span class="tag {{ 'manual' if sh.forwarder_status in ['NEED_CONFIRM','CONFLICT','NOT_ASSIGNED'] }}">{{ sh.forwarder_status }}</span>{% endif %}
+        {% if forwarder_candidates %}<div class="muted">Khớp nhiều rule: {{ forwarder_candidates|join(', ') }}</div>{% endif %}</dd>
+      <dt>PIC trong file</dt><dd>{{ sh.pic or '—' }}</dd>
+      <dt>Cơ sở</dt><dd>{{ sh.site or '—' }}</dd>
+    </dl>
+    {% if users %}
+    <form class="inline" method="post" action="/shipments/{{ sh.code }}/assign" style="margin-top:12px">
+      <select name="to_user"><option value="">(bỏ phân công)</option>
+        {% for name, label in users %}<option value="{{ name }}" {{ 'selected' if name==sh.assigned_to }}>{{ label }}</option>{% endfor %}</select>
+      <select name="kind"><option value="PRIMARY">Phụ trách chính</option><option value="BACKUP">Dự phòng</option></select>
+      <input name="note" placeholder="Ghi chú">
+      <button type="submit">Giao</button>
+    </form>
+    {% endif %}
+    {% if can_edit %}
+    <form class="inline" method="post" action="/shipments/{{ sh.code }}/forwarder" style="margin-top:8px">
+      <input name="forwarder" value="{{ sh.forwarder }}" placeholder="Forwarder (để trống = theo rule)">
+      <button class="ghost" type="submit">Chốt forwarder</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h3>Vì sao {{ sh.status }}?</h3>
+    <table>
+      <tbody>
+      {% for t in sh.status_reason.get('trace', []) %}
+        <tr><td class="mono">{{ t.check }}</td><td><b>{{ t.value }}</b>
+          {% if t.note %}<div class="muted">{{ t.note }}</div>{% endif %}</td></tr>
+      {% endfor %}
+        <tr><td class="mono">KẾT LUẬN</td>
+            <td><span class="pill {{ sh.auto_status }}">{{ sh.auto_status }}</span>
+              {% if sh.status != sh.auto_status %}
+                &rarr; <span class="pill {{ sh.status }}">{{ sh.status }}</span> <span class="muted">(User chốt)</span>
+              {% endif %}</td></tr>
+      </tbody>
+    </table>
+    <p class="muted" style="margin-top:8px">{{ sh.status_reason.get('reason','') }}</p>
+    {% if can_edit %}
+    <form class="inline" method="post" action="/shipments/{{ sh.code }}/override" style="margin-top:10px">
+      <input type="hidden" name="field" value="status">
+      <select name="value">
+        <option value="">-- Theo Automation --</option>
+        {% for s in statuses %}<option {{ 'selected' if overrides and overrides[0].value==s }}>{{ s }}</option>{% endfor %}
+      </select>
+      <input name="note" placeholder="Lý do (vd: khách báo hold)">
+      <button type="submit">Chốt trạng thái</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="two">
+  <div class="card">
+    <h3>Container</h3>
+    {% if alloc %}
+    <dl class="kv">
+      <dt>Tổng CBM (cả nhóm)</dt><dd class="mono">{{ '%.2f'|format(alloc.total_cbm or 0) }}</dd>
+      <dt>40HC / 40DC / 20ST</dt><dd class="mono">{{ alloc.qty_40hc }} / {{ alloc.qty_40dc }} / {{ alloc.qty_20st }}</dd>
+      <dt>Sức chứa</dt><dd class="mono">{{ '%.2f'|format(alloc.capacity or 0) }} (dư {{ '%.2f'|format(alloc.excess or 0) }})</dd>
+      <dt>TYPE</dt><dd class="mono">{{ alloc.type }}</dd>
+      <dt>Trạng thái</dt><dd>{{ alloc.status }} ({{ alloc.source }})</dd>
+      {% if alloc.note %}<dt>Ghi chú</dt><dd class="muted">{{ alloc.note }}</dd>{% endif %}
+    </dl>
+    {% else %}<p class="muted">Chưa tính container</p>{% endif %}
+  </div>
+  <div class="card">
+    <h3>Mốc deadline</h3>
+    {% if milestones %}
+    <dl class="kv">{% for k, v in milestones.items() %}<dt>{{ k }}</dt><dd class="mono">{{ v }}</dd>{% endfor %}</dl>
+    {% else %}<p class="muted">Chưa có EX-FACT DATE</p>{% endif %}
+  </div>
+</div>
+
+<div class="card scroll-x">
+  <h3>47 cột Follow Up</h3>
+  <table>
+    <thead><tr><th>Cột</th><th>Giá trị</th><th>Nguồn</th><th>Cột</th><th>Giá trị</th><th>Nguồn</th></tr></thead>
+    <tbody>
+    {% for pair in fields|batch(2) %}
+      <tr>
+      {% for f in pair %}
+        <td class="muted nowrap">{{ f.label }}</td>
+        <td class="mono">{{ f.value if f.value is not none else '' }}</td>
+        <td>{% if f.src in ['USER','MANAGER'] %}<span class="tag manual" title="{{ f.by }}">{{ f.src }} {{ f.by }}</span>
+            {% elif f.formula %}<span class="tag">công thức</span>{% else %}<span class="tag">{{ f.src }}</span>{% endif %}</td>
+      {% endfor %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if sh.derived_notes %}<p class="muted" style="margin-top:8px">Ghi chú tự suy ra: {% for k, v in sh.derived_notes.items() %}{{ k }} = {{ v }}; {% endfor %}</p>{% endif %}
+</div>
+
+<div class="two">
+  <div class="card">
+    <h3>Lịch sử phân công</h3>
+    <table><tbody>
+    {% for h in history %}
+      <tr><td class="mono nowrap">{{ h.ts.strftime('%d/%m %H:%M') }}</td><td>{{ h.kind }}</td>
+        <td>{{ h.from or '—' }} &rarr; <b>{{ h.to or '(bỏ)' }}</b></td><td class="muted">{{ h.by }} &middot; {{ h.method }}</td></tr>
+    {% else %}<tr><td class="muted">Chưa có</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+  <div class="card">
+    <h3>Thông báo</h3>
+    <table><tbody>
+    {% for n in notifications %}
+      <tr><td class="mono nowrap">{{ n.ts.strftime('%d/%m %H:%M') }}</td><td class="sev-{{ n.sev }}">{{ n.cat }}</td><td>{{ n.title }}</td></tr>
+    {% else %}<tr><td class="muted">Chưa có</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+</div>
+
+<div class="card scroll-x">
+  <h3>Lịch sử thay đổi (Audit)</h3>
+  <table>
+    <thead><tr><th>Lúc</th><th>Ai</th><th>Hành động</th><th>Trường</th><th>Cũ</th><th>Mới</th><th>Ghi chú</th></tr></thead>
+    <tbody>
+    {% for a in audits %}
+      <tr><td class="mono nowrap">{{ a.ts.strftime('%d/%m %H:%M') }}</td><td>{{ a.actor }}</td><td>{{ a.action }}</td>
+        <td>{{ a.field }}</td><td class="mono">{{ a.old }}</td><td class="mono">{{ a.new }}</td><td class="muted">{{ a.note }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

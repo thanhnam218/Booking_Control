@@ -12,9 +12,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from booking_bot.core.buyer_rules import BuyerRegistry  # noqa: E402
-from booking_bot.excel.mapping import FieldDictionary  # noqa: E402
-from booking_bot.settings import Settings  # noqa: E402
+from booking_control.core.buyer_rules import BuyerRegistry  # noqa: E402
+from booking_control.excel.mapping import FieldDictionary  # noqa: E402
+from booking_control.settings import Settings  # noqa: E402
 
 
 def _yaml(name: str) -> dict:
@@ -70,10 +70,11 @@ def workspace(tmp_path, field_mapping_cfg, buyer_cfg, today) -> Settings:
     for f in raw["files"]:
         f["path"] = str(sample_dir / name_map[f["id"]])
     raw["web"]["enabled"] = False
-    raw["notification"]["channels"] = {"toast": False, "popup": False,
-                                       "tray_balloon": False, "console": False}
+    raw["notification"]["channels"] = {"web": True, "email": False, "console": False}
     raw["field_mapping"] = field_mapping_cfg
     raw["buyer_rules"] = buyer_cfg
+    raw["followup_template"] = yaml.safe_load(
+        (ROOT / "config" / "followup_template.yaml").read_text(encoding="utf-8"))
     raw["config_path"] = "test"
     return Settings(**raw)
 
@@ -81,12 +82,12 @@ def workspace(tmp_path, field_mapping_cfg, buyer_cfg, today) -> Settings:
 @pytest.fixture
 def engine(workspace):
     """Engine da khoi tao DB rieng cho tung test."""
-    from booking_bot.db import init_engine
-    from booking_bot.engine import BookingBotEngine
-    from booking_bot.notify.engine import NotificationEngine
+    from booking_control.db import init_engine
+    from booking_control.engine import AutomationEngine
+    from booking_control.notify.engine import NotificationEngine
 
     init_engine(workspace.database_url())
-    eng = BookingBotEngine(workspace, NotificationEngine(workspace, channels={}))
+    eng = AutomationEngine(workspace, NotificationEngine(workspace, channels={}))
     eng.bootstrap()
     return eng
 

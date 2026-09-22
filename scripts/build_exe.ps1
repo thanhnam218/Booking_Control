@@ -3,8 +3,8 @@
     ------------------------------------------------
         .\scripts\build_exe.ps1
 
-    Ket qua: dist\BookingBot\BookingBot.exe  (kem thu muc config\ va docs\)
-    Copy ca thu muc dist\BookingBot sang may khac la chay duoc, khong can cai Python.
+    Ket qua: dist\BookingControl\BookingControl.exe  (kem thu muc config\ va docs\)
+    Copy ca thu muc dist\BookingControl sang may khac la chay duoc, khong can cai Python.
 #>
 
 $ErrorActionPreference = "Stop"
@@ -19,30 +19,30 @@ Write-Host "Cai PyInstaller ..." -ForegroundColor Yellow
 
 Write-Host "Dong goi ..." -ForegroundColor Yellow
 & $pyExe -m PyInstaller `
-    --name BookingBot `
+    --name BookingControl `
     --noconfirm `
     --clean `
-    --windowed `
-    --add-data "src\booking_bot\web\templates;booking_bot/web/templates" `
+    --console `
+    --add-data "src\booking_control\web\templates;booking_control/web/templates" `
+    --add-data "src\booking_control\web\static;booking_control/web/static" `
     --hidden-import "uvicorn.logging" `
     --hidden-import "uvicorn.loops.auto" `
     --hidden-import "uvicorn.protocols.http.auto" `
     --hidden-import "uvicorn.protocols.websockets.auto" `
     --hidden-import "uvicorn.lifespan.on" `
     --hidden-import "apscheduler.triggers.interval" `
-    --hidden-import "pystray._win32" `
-    --collect-submodules "booking_bot" `
-    "src\booking_bot\__main__.py"
+    --collect-submodules "booking_control" `
+    "src\booking_control\__main__.py"
 
-$dist = Join-Path $root "dist\BookingBot"
+$dist = Join-Path $root "dist\BookingControl"
 Copy-Item -Recurse -Force (Join-Path $root "config") (Join-Path $dist "config")
 Copy-Item -Recurse -Force (Join-Path $root "docs") (Join-Path $dist "docs")
 
 @"
 @echo off
 cd /d "%~dp0"
-start "" "BookingBot.exe" run
-"@ | Set-Content -Encoding ASCII (Join-Path $dist "Chay Bot.bat")
+start "" "BookingControl.exe" run
+"@ | Set-Content -Encoding ASCII (Join-Path $dist "Chay Booking Control.bat")
 
 Write-Host "`nXong: $dist" -ForegroundColor Green
-Write-Host 'Tren may moi: mo config\config.yaml sua duong dan file, roi bam "Chay Bot.bat".'
+Write-Host 'Tren may chu: sua config\config.yaml, tao admin (BookingControl.exe user add admin --role admin), roi bam "Chay Booking Control.bat".'

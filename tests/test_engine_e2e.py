@@ -8,8 +8,8 @@ import pytest
 from openpyxl import load_workbook
 from sqlalchemy import select
 
-from booking_bot.db import session_scope
-from booking_bot.db.models import (
+from booking_control.db import session_scope
+from booking_control.db.models import (
     AuditLog,
     ContainerAllocation,
     ExceptionRecord,
@@ -156,7 +156,7 @@ def test_shipping_schedule_written_at_t1_only(scanned):
 
 
 def test_rerun_is_idempotent(scanned):
-    """Bot chay lai khong duoc tao dong trung o file dich."""
+    """Automation chay lai khong duoc tao dong trung o file dich."""
     eng, _ = scanned
     path = eng.settings.resolve_path(eng.settings.file_by_code("F02").path)
     before = len(target_rows(path, "2026"))
@@ -187,7 +187,7 @@ def test_follow_up_rows_get_status_color(scanned):
 
 
 def test_user_override_survives_next_scan(scanned):
-    """SRS muc 34-35 + 73: User thang Bot, ke ca sau khi Bot quet lai."""
+    """SRS muc 34-35 + 73: User thang Automation, ke ca sau khi Automation quet lai."""
     eng, _ = scanned
     with session_scope() as s:
         sh = s.execute(select(Shipment).where(Shipment.jo == "JO-A1004")).scalar_one()
@@ -198,7 +198,7 @@ def test_user_override_survives_next_scan(scanned):
     eng.run_scan(today=TODAY, deliver_notifications=False)
     with session_scope() as s:
         sh = s.execute(select(Shipment).where(Shipment.jo == "JO-A1004")).scalar_one()
-    assert sh.bot_status == "GREEN"          # Bot van tinh dung
+    assert sh.auto_status == "GREEN"          # Automation van tinh dung
     assert sh.effective_status == "YELLOW"   # nhung hien thi theo User
 
 
@@ -275,7 +275,7 @@ def test_dry_run_does_not_touch_files(engine):
 
 
 def test_stale_planning_row_is_reported_after_date_change(scanned):
-    """Doi ngay xuat sau khi da ghi Planning -> Bot bao dong cu con sot, khong tu xoa."""
+    """Doi ngay xuat sau khi da ghi Planning -> Automation bao dong cu con sot, khong tu xoa."""
     eng, _ = scanned
     path = eng.settings.resolve_path(eng.settings.file_by_code("F01-A").path)
     wb = load_workbook(path)

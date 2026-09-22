@@ -8,7 +8,7 @@ Requirements Traceability Matrix — mỗi mục SRS được cài đặt ở đ
 
 | SRS | Yêu cầu | Cài đặt | Test |
 |---|---|---|---|
-| 3 | Chạy ngầm Windows, tray, database, notification | `scheduler.py` · `tray.py` · `db/` · `notify/` | thủ công |
+| 3 | Chạy ngầm Windows, database, notification | `scheduler.py` (Automation Engine) · `db/` · `notify/` · `scripts/install_autostart.ps1` | `test_job_run_records_retries` |
 | 4 | Database là lớp trung gian, không đọc–ghi Excel trực tiếp | `engine.py` · `db/models.py` | `test_engine_e2e.py` |
 | 61 | Stack phù hợp Windows | Python 3.11 + SQLite + FastAPI | CI (Windows + Ubuntu) |
 | 62 | Không dùng VBA làm core | — | — |
@@ -77,11 +77,11 @@ Requirements Traceability Matrix — mỗi mục SRS được cài đặt ở đ
 
 | SRS | Yêu cầu | Cài đặt | Test |
 |---|---|---|---|
-| 34 | Tách Bot Status và User Status | `bot_status` / `effective_status` | `test_user_override_wins` |
-| 35, 69 | USER > BOT, Bot không ghi đè | `engine._load_overrides` | `test_engine_e2e::test_user_override_survives_next_scan` |
-| 35 | User chốt container, Bot giữ nguyên | `_allocate_containers` | `test_user_container_choice_survives` |
+| 34 | Tách Automation Status và User Status | `auto_status` / `effective_status` | `test_user_override_wins` |
+| 35, 69 | USER > AUTO, Automation không ghi đè | `engine._load_overrides` | `test_engine_e2e::test_user_override_survives_next_scan` |
+| 35 | User chốt container, Automation giữ nguyên | `_allocate_containers` | `test_user_container_choice_survives` |
 | 36 | Audit Log đầy đủ | `audit.log_audit` · bảng `audit_logs` | `test_audit_log_records_bot_writes` |
-| 58 | Phân quyền User / Bot | `users.role` | thủ công |
+| 58 | Phân quyền User / Automation | `users.role` | thủ công |
 | 59 | Bổ sung Admin | `users.role = admin` | thủ công |
 
 ## 8. An toàn dữ liệu Excel
@@ -89,9 +89,9 @@ Requirements Traceability Matrix — mỗi mục SRS được cài đặt ở đ
 | SRS | Yêu cầu | Cài đặt | Test |
 |---|---|---|---|
 | 23 | Không INSERT trùng, có UPSERT | `ExcelTargetWriter.plan` | `test_insert_then_no_duplicate_on_rerun` |
-| 37 | User sửa Excel → Bot không ghi đè | `protect_user_edits` | `test_bot_never_erases_user_value_with_blank` |
+| 37 | User sửa Excel → Automation không ghi đè | `protect_user_edits` | `test_bot_never_erases_user_value_with_blank` |
 | 38 | Version Check trước khi ghi | `excel/backup.snapshot` | `test_conflict_detection_stops_write` |
-| 39 | Popup Conflict | `EX007` + popup | `test_conflict_detection_stops_write` |
+| 39 | Cảnh báo Conflict | `EX007` + thông báo web | `test_conflict_detection_stops_write` |
 | 40, 70 | File lock → retry 30/60/120s | `excel/locking.py` | `test_locked_file_is_detected_and_not_forced` |
 | 41 | Pending Queue, không mất dữ liệu | `PendingWrite` · `retry_pending` | `test_locked_file_is_detected_and_not_forced` |
 | 53 | Dry Run | `run_scan(dry_run=True)` | `test_dry_run_writes_nothing` · `test_dry_run_does_not_touch_files` |
@@ -119,7 +119,7 @@ Requirements Traceability Matrix — mỗi mục SRS được cài đặt ở đ
 | 47 | T-3: FOUND / MISSING / INVALID | `deadline.check_t3_fields` | `test_t3_field_check_states` |
 | 48 | Đổi ExFtyDate → tính lại deadline | `engine._persist_shipments` | `test_exfty_change_is_audited_and_recalculated` |
 | 49 | Phân loại Critical / Warning / Info | `notify/engine.dispatch_events` | `test_notifications_cover_all_deadline_types` |
-| 50 | Popup có Context | `notify/channels.PopupChannel` | thủ công |
+| 50 | Thông báo có Context | `notify/channels.NotificationPayload.context_lines` · chuông web · email | thủ công |
 | 51 | Nút Open Source → đúng sheet, đúng dòng | `notify/channels.open_file` | thủ công |
 | 44 | Chống spam thông báo | `dedup_key` + `dedup_hours` | `test_notification_dedup` |
 
@@ -155,7 +155,7 @@ Requirements Traceability Matrix — mỗi mục SRS được cài đặt ở đ
 | T-3 Final Information | `test_t3_field_check_states` | ✅ |
 | T-1 TDV/TGV | `test_shipping_schedule_written_at_t1_only` | ✅ |
 | Hold reminder 3 ngày, chỉnh 1–7 | `test_hold_reminder_respects_interval` | ✅ |
-| User override thắng Bot | `test_user_override_survives_next_scan` | ✅ |
+| User override thắng Automation | `test_user_override_survives_next_scan` | ✅ |
 | Có Audit Log | `test_audit_log_records_bot_writes` | ✅ |
 | Có Conflict Alert | `test_conflict_detection_stops_write` | ✅ |
 
@@ -222,7 +222,40 @@ SRS mục 64 yêu cầu chốt lại Follow Up khi có file thật. Những đi�
 | | Kết quả |
 |---|---|
 | Cột nhận diện | 46/47, độ tin cậy 100% (`SQ` chưa rõ nghĩa) |
-| 4 dòng · 1 NO · CONT TYPE `1x20` merge · 15.14 CBM | 1 nhóm, `USER_CONFIRMED`, khớp đề xuất Bot `1x20ST` |
+| 4 dòng · 1 NO · CONT TYPE `1x20` merge · 15.14 CBM | 1 nhóm, `USER_CONFIRMED`, khớp đề xuất Automation `1x20ST` |
 | Giả lập ngày T-7 | `GREEN` · ghi Weekly Planning / Custom Code / MM-Daily 4 dòng, CO = Yes, CO FORM = VK, HS CODE đúng |
 | Ngày hiện tại (ETD đã qua) | `COMPLETED`, không phát thông báo thừa, không chèn lô cũ vào Lịch xuất |
-| Sau 2 lần Bot tô màu | 79/81 part giống từng byte; NO, công thức, 1495 defined name, comment, merge nguyên vẹn |
+| Sau 2 lần Automation tô màu | 79/81 part giống từng byte; NO, công thức, 1495 defined name, comment, merge nguyên vẹn |
+
+
+---
+
+## 16. Yêu cầu v2 (bổ sung trong mô tả mới)
+
+| Yêu cầu | Thực hiện | Test |
+|---|---|---|
+| Phân quyền Admin / Quản lý / Người dùng (+ Chỉ xem) | `web/auth.py` (PERMISSIONS, PBKDF2, phiên, CSRF, khóa tạm) · `web/deps.auth_guard` · trang Người dùng | `test_auth.py` · `test_pages_require_login` · `test_admin_pages_forbidden_for_manager_and_user` · `test_viewer_is_read_only` · `test_write_without_csrf_is_rejected` · `test_wrong_password_then_lockout` · `test_temp_password_forces_change` · `test_first_admin_setup_only_when_no_admin` |
+| Quản lý phân bổ lô hàng cho từng người phụ trách | `services/assignment.py` (assign, auto_assign, workload) · `/assignments` · nút *Giao* trên lưới · `assignment_history` | `test_scan_auto_assigns_by_rule_then_file_owner` · `test_manager_bulk_assign_and_rescan_never_overrides` · `test_bulk_assign_by_filter` · `test_user_cannot_assign` |
+| Người dùng chỉ thấy lô được giao (SRS v2 mục 53, 64) | `shipment_service.visible_stmt / get_visible` | `test_user_sees_only_assigned_rows_manager_sees_all` · `test_user_cannot_open_or_edit_foreign_shipment` |
+| Khung mẫu giống file Follow Up, chức năng giống Excel | `config/followup_template.yaml` · `followup/template.py` · `/followup` (Jspreadsheet CE: sửa ô, dán từ Excel, kéo điền, hoàn tác, lọc cột, tìm, sắp xếp, cố định A–J) · `static/followup.js` | `test_template_has_47_columns_in_real_order` · `test_excel_formulas_match_real_file` · `test_edit_recalculates_formulas_and_status` · kiểm thử trình duyệt (Playwright) khi phát triển |
+| Công thức Excel đúng (NO, 95% FOB, CDF AMOUNT, TSN AMOUNT) | Một định nghĩa → Python / JS / công thức Excel; ROUND kiểu Excel | `test_python_formulas_follow_dependency_order` · `test_excel_round_is_half_up_not_bankers` · `test_live_formulas_keep_typed_values` · `test_manager_can_override_formula_and_clear_it` |
+| Field Ownership Matrix (Source / User / Manager / Auto / Override) | cột `user` / `manager` / `auto` / `source` trong template · EX016 cho cột `review` | `test_field_ownership` · `test_column_permissions_and_review` |
+| USER > AUTOMATION, lưu Automation value / User value / ai / lúc nào | `field_src` + Audit `FIELD_CHANGED` + `_merge_web_overrides` + EX015 | `test_web_edit_survives_excel_rescan_and_conflict_goes_to_exception` |
+| Optimistic lock (SRS v2 mục 54) | `shipments.version` | `test_stale_version_is_rejected` |
+| Bỏ "Bot", chỉ dùng công nghệ tự động (mục 54-56, 81) | Đổi tên toàn bộ; `scheduler.py` với job + `job_runs` (Job ID, start, end, status, error, retry); bỏ tray / popup / toast | `test_job_run_records_retries` |
+| Xuất Excel từ dữ liệu web: 1 Buyer = 1 sheet, 47 cột, tên sheet ≤ 31 ký tự, kiểm quyền backend | `services/excel_export.py` · `/export/followup.xlsx` | `test_export_my_shipments_one_sheet_per_buyer` · `test_manager_filtered_export` · `test_manager_export_by_filter_and_sheet_names` |
+| Import Excel có xem trước (mục 70) | `engine.import_followup` · `/import` | `test_import_preview_then_apply_is_idempotent` |
+| Buyer-Forwarder Rule: AUTO_ASSIGNED / NEED_CONFIRM / NOT_ASSIGNED / CONFLICT (test case 62) | `core/forwarder.py` · `buyer_rules.yaml › forwarder_rules` · EX017 | `test_forwarder_case_a…d` · `test_create_web_shipment_and_rescan_keeps_it` |
+| Tạo lô trực tiếp trên web | `shipment_service.create_shipment` | `test_create_web_shipment_and_rescan_keeps_it` |
+| Không xóa dữ liệu nghiệp vụ (mục 48) | `archived` (lưu trữ), khóa tài khoản thay vì xóa | `test_archive_hides_row` |
+| Dashboard User (My Shipments theo D-x) / Manager (Team Workload) | `routes_main.dashboard` · `assignment.workload` | kiểm thử giao diện |
+| Nâng cấp từ v1 không mất dữ liệu | `db/session._rename_legacy_columns` + mặc định cho cột mới | `test_v1_database_is_upgraded_in_place` |
+
+### Chưa làm trong v2 (đã có chỗ mở rộng)
+
+| Hạng mục SRS v2/v3 | Ghi chú |
+|---|---|
+| Document Matrix / Document Package / upload chứng từ | Cần thống nhất danh mục chứng từ theo Buyer + Forwarder |
+| Email Pattern Matrix, Email Confidence, Outlook Inbox/Event | Hiện đọc Outlook theo từ khóa (`integrations/outlook.py`); matrix theo forwarder cần mẫu email thật |
+| Workflow B1–B15.1, Task Status | Cần chốt quy trình từng buyer trước khi mã hóa |
+| Booking Form / Email Template gửi đi | SRS khuyến nghị không tự gửi email từ V1 |

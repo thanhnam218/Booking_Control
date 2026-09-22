@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from booking_bot.core.container import DEFAULT_CAPACITY, apply_user_allocation, plan_containers
+from booking_control.core.container import DEFAULT_CAPACITY, apply_user_allocation, plan_containers
 
 CAP = DEFAULT_CAPACITY
 PRI = ["40HC", "40DC", "20ST"]
@@ -71,7 +71,7 @@ def test_lcl_suggestion_under_threshold():
 
 
 def test_missing_cbm_needs_review():
-    """SRS muc 19: Bot khong tu quyet dinh khi thieu du lieu."""
+    """SRS muc 19: Automation khong tu quyet dinh khi thieu du lieu."""
     for bad in (None, 0, -5):
         p = plan_containers(bad, "SEA")
         assert p.allocation_status == "NEED_REVIEW"
@@ -91,7 +91,7 @@ def test_min_excess_strategy_differs_and_is_valid():
 
 
 def test_user_allocation_overrides_bot():
-    """SRS muc 35: USER > BOT."""
+    """SRS muc 35: USER > AUTO."""
     p = plan_containers(160, "SEA", lcl_threshold_cbm=0)
     p = apply_user_allocation(p, {"40HC": 3, "40DC": 0, "20ST": 0}, CAP, PRI)
     assert p.allocation_status == "USER_CONFIRMED"

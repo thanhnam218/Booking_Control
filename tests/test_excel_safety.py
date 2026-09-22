@@ -1,6 +1,6 @@
 """An toan du lieu Excel - SRS muc 23, 37-41, 54, 70, 73.
 
-Day la nhom test quan trong nhat: Bot khong duoc lam mat du lieu cua User.
+Day la nhom test quan trong nhat: Automation khong duoc lam mat du lieu cua User.
 """
 
 from __future__ import annotations
@@ -10,9 +10,9 @@ import datetime as dt
 import pytest
 from openpyxl import Workbook, load_workbook
 
-from booking_bot.excel.backup import list_backups, make_backup, rollback, row_hash, snapshot
-from booking_bot.excel.locking import FileLockedError, check_lock, owner_lock_file, safe_write
-from booking_bot.excel.writer import ExcelTargetWriter, find_target_header, key_part
+from booking_control.excel.backup import list_backups, make_backup, rollback, row_hash, snapshot
+from booking_control.excel.locking import FileLockedError, check_lock, owner_lock_file, safe_write
+from booking_control.excel.writer import ExcelTargetWriter, find_target_header, key_part
 
 COLUMNS = ["NO", "EXFTY", "BUYER", "JO", "CBM", "TYPE"]
 KEYS = ["JO", "EXFTY"]
@@ -74,7 +74,7 @@ def test_find_target_header_is_case_and_accent_insensitive(tmp_path):
 
 
 def test_insert_then_no_duplicate_on_rerun(target, tmp_path):
-    """SRS muc 23 + 73: Bot chay nhieu lan khong duoc tao dong trung."""
+    """SRS muc 23 + 73: Automation chay nhieu lan khong duoc tao dong trung."""
     records = [rec("JO-1", dt.date(2026, 9, 20)), rec("JO-2", dt.date(2026, 9, 21))]
     w = writer(target, tmp_path)
     r1 = w.apply(records)
@@ -102,7 +102,7 @@ def test_update_changes_only_changed_cells(target, tmp_path):
 
 
 def test_bot_never_erases_user_value_with_blank(target, tmp_path):
-    """SRS muc 37: Bot khong duoc xoa du lieu User da nhap."""
+    """SRS muc 37: Automation khong duoc xoa du lieu User da nhap."""
     writer(target, tmp_path).apply([rec("JO-1", dt.date(2026, 9, 20), typ="1x40HC")])
     r = writer(target, tmp_path).apply([rec("JO-1", dt.date(2026, 9, 20), typ=None)])
     assert r.updated == 0
@@ -110,11 +110,11 @@ def test_bot_never_erases_user_value_with_blank(target, tmp_path):
 
 
 def test_conflict_detection_stops_write(target, tmp_path):
-    """SRS muc 38-39: file doi tu luc Bot doc -> STOP, khong ghi de."""
+    """SRS muc 38-39: file doi tu luc Automation doc -> STOP, khong ghi de."""
     w = writer(target, tmp_path)
     stale = snapshot(target, with_hash=False).version_token
 
-    # User sua file trong luc Bot dang xu ly
+    # User sua file trong luc Automation dang xu ly
     wb = load_workbook(target)
     wb["PLAN"]["A5"] = "USER DA SUA"
     wb.save(target)

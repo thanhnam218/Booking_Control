@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "booking-deadline-bot"
-version = "1.1.0"
-description = "Phan mem tu dong quan ly deadline booking xuat khau - quet Excel Follow Up, tinh trang thai booking, phan bo container, nhac deadline va cap nhat cac file Planning."
+name = "booking-control"
+version = "2.0.0"
+description = "Web noi bo quan ly Export Shipment & Booking: luoi Follow Up 47 cot giong Excel, phan quyen Admin/Quan ly/Nguoi dung, phan cong lo hang, xuat Excel, Automation Engine (deadline, Planning, HS Code, Outlook)."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -31,13 +31,11 @@ dependencies = [
     "typer>=0.9.0",
     "rich>=13.7.0",
     "portalocker>=2.8.2",
+    "tzdata>=2024.1",
 ]
 
 [project.optional-dependencies]
 windows = [
-    "pystray>=0.19.5",
-    "Pillow>=10.2.0",
-    "winotify>=1.1.0",
     "pywin32>=306; sys_platform == 'win32'",
 ]
 dev = [
@@ -49,13 +47,13 @@ dev = [
 ]
 
 [project.scripts]
-bookingbot = "booking_bot.cli:main"
+bookingctl = "booking_control.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-booking_bot = ["web/templates/*.html", "web/static/*"]
+booking_control = ["web/templates/*.html", "web/static/*", "web/static/vendor/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

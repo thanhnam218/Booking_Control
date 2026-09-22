@@ -1,6 +1,7 @@
 -r requirements.txt
 pytest>=8.0.0
 pytest-cov>=4.1.0
+httpx>=0.27.0          # FastAPI TestClient (test web)
 freezegun>=1.4.0
 ruff>=0.2.0
 pyinstaller>=6.3.0

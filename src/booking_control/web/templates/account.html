@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Tài khoản của tôi</h2>
+<p class="page-sub">{{ me.name }} &middot; {{ me.role_label }}{% if me.team %} &middot; nhóm {{ me.team }}{% endif %}</p>
+{% if msg %}<div class="flash ok">{{ msg }}</div>{% endif %}
+{% if error %}<div class="flash err">{{ error }}</div>{% endif %}
+{% if me.must_change_password %}<div class="flash warn">Bạn đang dùng mật khẩu tạm do Admin cấp. Hãy đổi mật khẩu để tiếp tục.</div>{% endif %}
+<div class="two">
+  <div class="card">
+    <h3>Đổi mật khẩu</h3>
+    <form method="post" action="/account/password" class="stack">
+      <label>Mật khẩu hiện tại<input name="old_password" type="password" autocomplete="current-password" required></label>
+      <label>Mật khẩu mới<input name="new_password" type="password" autocomplete="new-password" required></label>
+      <label>Nhập lại mật khẩu mới<input name="new_password2" type="password" autocomplete="new-password" required></label>
+      <button type="submit">Đổi mật khẩu</button>
+    </form>
+  </div>
+  {% if not me.must_change_password %}
+  <div class="card">
+    <h3>Thông tin</h3>
+    <form method="post" action="/account/profile" class="stack">
+      <label>Họ tên hiển thị<input name="display_name" value="{{ me.display_name }}"></label>
+      <label>Email (nhận thông báo CRITICAL nếu Admin bật email)<input name="email" type="email" value="{{ me.email }}"></label>
+      <button type="submit">Lưu</button>
+    </form>
+    <p style="margin-top:14px"><button type="button" id="ask-notify" class="ghost" hidden>Bật thông báo trên màn hình (Desktop Notification)</button></p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

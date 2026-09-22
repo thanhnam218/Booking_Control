@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Exception Center</h2>
+<p class="page-sub">Mọi dữ liệu hệ thống không chắc chắn đều vào đây — Automation không tự đoán.
+  {% if not me.can('exceptions.view_all') %}Bạn đang xem exception của các lô được giao cho bạn.{% endif %}</p>
+
+<div class="toolbar">
+  <a class="btn {{ '' if show=='OPEN' else 'ghost' }}" href="/exceptions?show=OPEN&code={{ code }}">Chưa xử lý</a>
+  <a class="btn {{ '' if show=='ALL' else 'ghost' }}" href="/exceptions?show=ALL&code={{ code }}">Tất cả</a>
+  <form method="get" action="/exceptions" class="inline">
+    <input type="hidden" name="show" value="{{ show }}">
+    <select name="code" onchange="this.form.submit()"><option value="">Mọi mã</option>
+      {% for c in codes %}<option {{ 'selected' if c==code }}>{{ c }}</option>{% endfor %}</select>
+  </form>
+</div>
+
+<div class="card scroll-x">
+<table>
+  <thead><tr><th>Mã</th><th>Mức độ</th><th>Lý do</th><th>Nguồn</th><th>Giá trị</th><th>Đề xuất xử lý</th><th>Lúc</th><th></th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td class="mono">{{ r.code }}</td>
+      <td class="sev-{{ r.severity }}">{{ r.severity }}</td>
+      <td>{{ r.reason }}{% if r.shipment %}<div><a href="/shipments/{{ r.shipment }}" class="mono">{{ r.shipment }}</a></div>{% endif %}</td>
+      <td class="mono muted">{{ r.file }}{% if r.sheet %}<br>{{ r.sheet }}{% endif %}{% if r.row %} / dòng {{ r.row }}{% endif %}{% if r.col %} / cột {{ r.col }}{% endif %}</td>
+      <td class="mono">{{ r.value }}</td>
+      <td class="muted">{{ r.action }}</td>
+      <td class="mono nowrap">{{ r.created.strftime('%d/%m %H:%M') }}</td>
+      <td>
+        {% if r.status == 'OPEN' and me.can('exceptions.resolve') %}
+          {% if r.code == 'EX015' %}
+          <form class="inline" method="post" action="/exceptions/{{ r.id }}/resolve">
+            <input type="hidden" name="status" value="RESOLVED">
+            <button type="submit" name="decision" value="web" class="btn-sm">Giữ giá trị web</button>
+            <button type="submit" name="decision" value="excel" class="btn-sm ghost">Lấy giá trị Excel</button>
+          </form>
+          {% else %}
+          <form class="inline" method="post" action="/exceptions/{{ r.id }}/resolve">
+            <input name="note" placeholder="Ghi chú" size="10">
+            <select name="status"><option value="RESOLVED">Đã xử lý</option><option value="IGNORED">Bỏ qua</option></select>
+            <button type="submit" class="btn-sm">OK</button>
+          </form>
+          {% endif %}
+        {% elif r.status == 'OPEN' %}<span class="muted">Chờ Quản lý</span>
+        {% else %}<span class="muted">{{ r.status }}</span>{% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="muted">Không có exception nào</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

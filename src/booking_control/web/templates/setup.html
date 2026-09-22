@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Tạo Admin - {{ app_name }}{% endblock %}
+{% block public %}
+<div class="login-wrap">
+  <div class="card">
+    <h1>Thiết lập lần đầu</h1>
+    <p class="page-sub">Chưa có tài khoản Admin. Tạo Admin đầu tiên để quản lý người dùng và phân quyền.</p>
+    {% if error %}<div class="flash err">{{ error }}</div>{% endif %}
+    {% if not allowed %}
+      <div class="flash warn">Vì an toàn, trang này chỉ mở được trên <b>chính máy chủ</b> (http://127.0.0.1).
+        Hoặc chạy lệnh: <code>bookingctl user add admin --role admin</code></div>
+    {% else %}
+    <form method="post" action="/setup" class="stack">
+      <label>Tên đăng nhập<input name="username" value="admin" required></label>
+      <label>Họ tên<input name="display_name" placeholder="Nguyễn Văn A"></label>
+      <label>Mật khẩu (ít nhất 8 ký tự, có chữ và số)<input name="password" type="password" required></label>
+      <label>Nhập lại mật khẩu<input name="password2" type="password" required></label>
+      <button type="submit">Tạo Admin</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
