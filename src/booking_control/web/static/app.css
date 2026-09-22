@@ -92,3 +92,35 @@ details.box summary{cursor:pointer;font-weight:600}
 .nowrap{white-space:nowrap}
 .scroll-x{overflow-x:auto}
 @media(max-width:1000px){.two{grid-template-columns:1fr}aside{width:64px;flex-basis:64px}aside h1,aside .sub,aside nav a span,aside nav .sec{display:none}main{padding:16px}}
+/* ---- v3: booking / email / chung tu / task ---- */
+.tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin-bottom:14px}
+.tabs a{padding:7px 13px;border:1px solid transparent;border-bottom:0;border-radius:8px 8px 0 0;color:var(--muted);font-size:13px}
+.tabs a.on{background:var(--panel);border-color:var(--line);color:var(--accent);font-weight:600;margin-bottom:-1px}
+.tabs a b{font-size:11px;background:var(--accent-soft);color:var(--accent);border-radius:9px;padding:0 6px;margin-left:4px}
+.bk{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:600;border:1px solid var(--line);white-space:nowrap}
+.bk.REQUESTED,.bk.PENDING,.bk.DRAFT{color:var(--muted)}
+.bk.BOOKED,.bk.CONFIRMED,.bk.AMENDED{color:#fff;background:var(--green);border-color:var(--green)}
+.bk.ON_HOLD,.bk.CANCEL_REQUESTED{color:#fff;background:var(--red);border-color:var(--red)}
+.bk.DELAYED,.bk.PARTIALLY_SHIPPED,.bk.REBOOK_REQUESTED{color:#fff;background:var(--partial);border-color:var(--partial)}
+.bk.DEPARTED,.bk.COMPLETED{color:#fff;background:var(--completed);border-color:var(--completed)}
+.bk.CANCELLED,.bk.REBOOKED{color:#fff;background:var(--cancelled);border-color:var(--cancelled);text-decoration:line-through}
+.st{display:inline-block;font-size:11px;font-weight:600;padding:1px 7px;border-radius:9px;white-space:nowrap}
+.st.OK,.st.APPROVED,.st.COMPLETED,.st.APPLIED,.st.FULL{background:#e8f5e9;color:#1b5e20}
+.st.MISSING,.st.PENDING,.st.UNMATCHED,.st.NONE,.st.WAITING{background:var(--accent-soft);color:var(--muted)}
+.st.OVERDUE,.st.REJECTED,.st.CONFLICT,.st.PARTIAL,.st.OVER{background:#ffebee;color:#b71c1c}
+.st.BLOCKED,.st.REVIEW{background:#fff8e1;color:#7a5200}
+.st.IN_PROGRESS{background:#e3f2fd;color:#0d47a1}
+.st.SKIPPED,.st.CANCELLED,.st.IGNORED{background:var(--bg);color:var(--muted)}
+@media (prefers-color-scheme: dark){.st.OK,.st.APPROVED,.st.COMPLETED,.st.APPLIED,.st.FULL{background:#16301b;color:#a5d6a7}
+.st.OVERDUE,.st.REJECTED,.st.CONFLICT,.st.PARTIAL,.st.OVER{background:#3a1717;color:#ef9a9a}
+.st.BLOCKED,.st.REVIEW{background:#3a2f12;color:#ffe082}.st.IN_PROGRESS{background:#10263d;color:#90caf9}}
+.reasons{font-size:11px;color:var(--muted)}
+.conflict td{background:#fff3e0}
+@media (prefers-color-scheme: dark){.conflict td{background:#33261a}}
+.mini{font-size:11px}
+.mail-body{white-space:pre-wrap;max-height:340px;overflow:auto}
+.three{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media(max-width:1000px){.three{grid-template-columns:1fr}}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px 12px}
+.fields label{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted)}
+button:disabled{opacity:.35;cursor:not-allowed}

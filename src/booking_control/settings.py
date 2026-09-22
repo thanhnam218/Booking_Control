@@ -278,12 +278,37 @@ class JobsCfg(BaseModel):
 
 
 class OutlookCfg(BaseModel):
+    """Doc Outlook desktop tren may chu (can Outlook dang mo + pywin32)."""
+
     enabled: bool = False
-    folders: list[str] = Field(default_factory=lambda: ["Inbox"])
-    lookback_days: int = 30
-    booking_confirm_keywords: list[str] = Field(default_factory=list)
-    cancel_keywords: list[str] = Field(default_factory=list)
-    auto_apply: bool = False
+    mailbox: str = ""                  # de trong = hop thu mac dinh; hoac ten hop thu dung chung
+    folders: list[str] = Field(default_factory=lambda: ["Inbox", "Sent Items"])
+    lookback_days: int = 14            # lan dau doc lui bao nhieu ngay; sau do chi doc email moi
+    max_items: int = 500               # moi lan quet toi da bao nhieu email / thu muc
+    attachment_exts: list[str] = Field(default_factory=lambda: [".pdf", ".xlsx", ".xls", ".docx"])
+    max_attachment_mb: int = 15
+    body_chars: int = 6000             # chi luu doan dau than email (khong luu ca hop thu)
+    auto_apply: bool = True            # email du diem (>= thresholds.auto) va khong mau thuan -> tu ap dung
+
+
+class DocumentsCfg(BaseModel):
+    root: str = ""                     # de trong = <data_dir>/documents; co the la o NAS \\server\share
+    max_upload_mb: int = 25
+    allowed_exts: list[str] = Field(default_factory=lambda: [
+        ".pdf", ".xlsx", ".xls", ".xlsm", ".docx", ".doc", ".png", ".jpg", ".jpeg", ".zip", ".msg", ".eml"])
+
+
+class WeeklyPlanningCfg(BaseModel):
+    """Weekly Planning phai xong truoc 12:00 thu 6 (SRSv5 muc 36)."""
+
+    enabled: bool = True
+    include_next_week_from: str = "thu"   # tu thu 5: ghi luon cac lo cua TUAN SAU vao Weekly Planning
+    deadline: str = "fri 12:00"
+    reminders: list[dict[str, str]] = Field(default_factory=lambda: [
+        {"at": "thu 08:00", "level": "INFO"},
+        {"at": "fri 08:00", "level": "WARNING"},
+        {"at": "fri 11:00", "level": "CRITICAL"},
+    ])
 
 
 class Settings(BaseModel):
@@ -304,12 +329,16 @@ class Settings(BaseModel):
     assignment: AssignmentCfg = Field(default_factory=AssignmentCfg)
     jobs: JobsCfg = Field(default_factory=JobsCfg)
     outlook: OutlookCfg = Field(default_factory=OutlookCfg)
+    documents: DocumentsCfg = Field(default_factory=DocumentsCfg)
+    weekly_planning: WeeklyPlanningCfg = Field(default_factory=WeeklyPlanningCfg)
 
     # runtime
     config_path: str = ""
     field_mapping: dict[str, Any] = Field(default_factory=dict)
     buyer_rules: dict[str, Any] = Field(default_factory=dict)
     followup_template: dict[str, Any] = Field(default_factory=dict)
+    email_profiles: dict[str, Any] = Field(default_factory=dict)
+    workflow: dict[str, Any] = Field(default_factory=dict)
 
     # -- tien ich -----------------------------------------------------------
 
@@ -318,6 +347,18 @@ class Settings(BaseModel):
         p = Path(self.app.data_dir)
         if not p.is_absolute():
             p = PROJECT_ROOT / p
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    @property
+    def documents_dir(self) -> Path:
+        p = Path(self.documents.root) if self.documents.root else self.data_dir / "documents"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    @property
+    def mail_dir(self) -> Path:
+        p = self.data_dir / "mail"
         p.mkdir(parents=True, exist_ok=True)
         return p
 
@@ -399,6 +440,8 @@ def load_settings(config_path: str | None = None) -> Settings:
     raw["field_mapping"] = _load_yaml(fm_path)
     raw["buyer_rules"] = _load_yaml(br_path)
     raw["followup_template"] = _load_yaml(CONFIG_DIR / "followup_template.yaml")
+    raw["email_profiles"] = _load_yaml(CONFIG_DIR / "email_profiles.yaml")
+    raw["workflow"] = _load_yaml(CONFIG_DIR / "workflow.yaml")
     raw["config_path"] = str(cfg_file)
     return Settings(**raw)
 

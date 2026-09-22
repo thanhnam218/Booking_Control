@@ -314,8 +314,8 @@ Một tiến trình duy nhất cho web + automation: đơn giản để cài tr�
 
 ```
 1. Người dùng / Quản lý sửa trên web      field_src[field] = USER | MANAGER   (thắng)
-2. Email Outlook đã xác nhận               (auto_apply, cột auto: true)
-3. Excel import (quét file / upload)       chỉ ghi ô chưa bị sửa tay
+2. Booking sửa trên web / Email Outlook    field_src[field] = BOOKING | OUTLOOK (không ghi đè USER -> EX020)
+3. Excel import (quét file / upload)       chỉ ghi ô chưa bị sửa tay / chưa do booking, email ghi
 4. Rule mặc định / công thức
 ```
 
@@ -344,3 +344,55 @@ Cột công thức chỉ tự tính lại khi đang **"sống"** (giá trị hi�
 ### 8.6 Xuất Excel
 
 `services/excel_export.build_workbook()` tạo file mới bằng openpyxl (không đụng file gốc): nhóm theo Buyer → sheet (≤ 31 ký tự, chống trùng), 47 cột theo template, công thức Excel thật cho cột công thức (trừ ô đã sửa tay), cột hệ thống ở cuối, freeze A–J, AutoFilter, màu trạng thái, merge CONT TYPE theo nhóm liên tiếp.
+
+
+---
+
+## 9. Kiến trúc v3 — Booking tách riêng, Email, Chứng từ, Quy trình
+
+### 9.1 Mô hình dữ liệu
+
+```
+ shipments (47 cột + booking_status / hold_status / ship_status)
+     │ N                                   N │
+     └────────── booking_shipments ──────────┘  allocated_qty (None = cả lô)  → split / gộp
+                        │ N
+                        1
+                     bookings  (status, booking_no, vessel, ETD, cut-off, conversation_id,
+                                original_booking_id ↔ replacement_booking_id)   ← không bao giờ xóa
+ shipment_executions   lần xuất thực tế (ngày, SL, cont, seal)  → PARTIALLY_SHIPPED / FULLY_SHIPPED
+ shipment_events       dòng thời gian nghiệp vụ (BOOKING_CONFIRMED, ETD_CHANGED, EMAIL_*, TASK_*...)
+ emails ─ email_attachments   message_id UNIQUE (idempotent), điểm, ứng viên, email vs PDF
+ conversation_links    Conversation Outlook ↔ lô / booking (học từ lần ghép đầu)
+ documents ─ document_versions   metadata + đường dẫn + SHA-256; file nằm ngoài DB
+ workflow_tasks        B1…B15.1 mỗi lô (unique shipment_code + step_code), manual_due, manual_status
+```
+
+### 9.2 Trạng thái tách lớp
+
+`core/booking.summarize()` gộp các booking của một lô → `booking_status` (booking hiệu lực mới nhất), `hold` (có booking ON_HOLD), `cancelled` (mọi booking đã hủy, chưa rebook), mức phân bổ (`FULL / PARTIAL / OVER`). `status_values()` đưa các cờ này vào Status Engine cũ → màu dòng (RED / CANCELLED / PARTIAL…) vẫn tính bằng **một** chỗ (`core/status.evaluate`). Ba cột `booking_status`, `hold_status` (NO_HOLD / HOLD / RELEASED), `ship_status` lưu riêng để lọc, báo cáo.
+
+### 9.3 Đồng bộ với Follow Up
+
+- **Excel → booking**: mỗi lần quét, `booking_service.sync_rows()` biến BOOKING NO thành booking (cùng số trên nhiều lô → một booking gộp). Booking đã hủy không bị "hồi sinh"; số booking đổi khi booking cũ còn hiệu lực → EX019, không tự hủy.
+- **Booking → 47 cột**: `push_to_shipments()` ghi Booking No / ETD / ETA / Vessel / Booking Date / Closing vào lô qua `engine.apply_values()`; ô USER / MANAGER được giữ (trừ khi chính người dùng sửa booking trên web).
+- **Lưới → booking**: gõ BOOKING NO trên lưới hoặc tạo lô có BOOKING NO → `sync_from_row(source=USER)`.
+
+### 9.4 Email Outlook
+
+Tách hai lớp để test được trên Linux: `integrations/outlook.py` (COM, chỉ đọc email thành `MailMessage`) và `services/email_service.EmailProcessor` (thuần Python). Mốc đọc lần cuối theo từng thư mục lưu ở `system_settings["outlook.last_sync"]`, đọc lùi 10 phút; trùng `message_id` bị bỏ qua. Chấm điểm bằng **token có thật trong DB** (không cần biết định dạng JO/PO của công ty); Buyer / ETD / Vessel / Forwarder chỉ cộng thêm khi đã có dấu hiệu định danh. Email ≠ PDF → `CONFLICT`, không bao giờ tự chọn.
+
+### 9.5 Quy trình & chứng từ
+
+`config/workflow.yaml` là nguồn duy nhất: bước, hạn (anchor + offset), phụ thuộc, chứng từ bắt buộc, điều kiện tự hoàn thành. `workflow_service.ensure_tasks()` chạy mỗi lần quét, đọc task dạng tuple và ghi hàng loạt (`insert` / `update` theo khóa chính) → 10.000 lô, ~150.000 task đồng bộ trong vài giây. Task người dùng đã đổi tay (`manual_status`) hoặc hạn đã chỉnh (`manual_due`) không bị Automation ghi đè. Đổi cấu hình bước → hash thay đổi → cập nhật tên / thứ tự / phụ thuộc cho task chưa xong một lần.
+
+### 9.6 Hiệu năng
+
+| Tác vụ (10.000 lô, SQLite, laptop) | Thời gian |
+|---|---|
+| Nhận diện header Excel (có cache + chặn trên SequenceMatcher) | nhanh hơn ~6 lần so với v2 |
+| Đồng bộ booking + task mỗi lần quét | 2–5 giây |
+| Trang Tổng quan / Lô hàng / Booking / Việc của tôi | 0,1–2 giây |
+| Lưới Follow Up | phân trang phía máy chủ (`web.grid_page_size`, mặc định 2.000 dòng/trang) |
+
+Index mới trên `shipments` (NO, JO, GO, PO, Buyer, Booking No, ETD, GroupKey) được tạo tự động cả trên database cũ (`db/session._ensure_indexes`).

@@ -251,11 +251,44 @@ SRS mục 64 yêu cầu chốt lại Follow Up khi có file thật. Những đi�
 | Dashboard User (My Shipments theo D-x) / Manager (Team Workload) | `routes_main.dashboard` · `assignment.workload` | kiểm thử giao diện |
 | Nâng cấp từ v1 không mất dữ liệu | `db/session._rename_legacy_columns` + mặc định cho cột mới | `test_v1_database_is_upgraded_in_place` |
 
-### Chưa làm trong v2 (đã có chỗ mở rộng)
+### Chưa làm trong v2 → đã làm trong v3 (mục 17)
 
-| Hạng mục SRS v2/v3 | Ghi chú |
+Document Matrix, Email Pattern / Confidence, Outlook Inbox, Workflow B1–B15.1 — xem bảng dưới.
+
+---
+
+## 17. Yêu cầu v3 (SRSv5: Booking N:N, Email Outlook, Chứng từ, Workflow, Weekly Planning, Auditor)
+
+| Yêu cầu SRSv5 | Thực hiện | Test |
+|---|---|---|
+| Booking tách riêng khỏi lô; 1 lô nhiều booking (split), nhiều lô 1 booking (gộp) (mục 7-9) | `bookings` + `booking_shipments.allocated_qty` · `core/booking.allocation_status` · EX018 | `test_allocation_and_ship_status_rules` · `test_split_booking_allocation_and_partial_shipment` · `test_split_booking_partial_shipment_via_web` · `test_combined_booking_confirmation_matches_all_shipments` |
+| Xuất một phần theo số lượng thực tế (mục 10, BR-012) | `shipment_executions` · `booking_service.record_execution` · `ship_status` | `test_split_booking_partial_shipment_via_web` |
+| Không xóa booking; Cancel / Rebook giữ lịch sử (BR-008, BR-009) | `set_status(CANCELLED)` · `rebook()` (original ↔ replacement) · `TRANSITIONS` | `test_cancel_then_rebook_keeps_history` · `test_hold_cancel_rebook_via_web` · `test_transitions_block_invalid_moves` |
+| Hold / Release, tách Booking Status / Hold Status / Ship Status (mục 11-13, Appendix A) | `core/booking.summarize / status_values` · 3 cột trên `shipments` | `test_hold_and_release` · `test_summary_prefers_active_booking_and_flags_hold` |
+| Booking cũ không bị file Excel "hồi sinh"; đổi số booking → xác nhận | `booking_service.sync_rows` · EX019 | `test_cancelled_booking_is_not_resurrected_by_next_scan` · `test_changed_booking_no_in_excel_raises_ex019` · `test_excel_booking_numbers_become_bookings` |
+| Đọc Outlook desktop (Inbox + Sent), chỉ email mới, chống xử lý trùng (mục 19-22, NFR-03) | `integrations/outlook.py` (COM, Message-ID, ConversationID, In-Reply-To, mốc `outlook.last_sync`) · `emails.message_id UNIQUE` | `test_request_then_confirmation_in_same_conversation` (ingest lại → duplicate) |
+| Phân loại email (Request / Confirmation / Amendment / Delay / Rebook / Hold / Release / Cancel) (BR-004) | `core/email_parse.classify` · `email_profiles.yaml › categories` | `test_email_parse_fields_and_category` |
+| Đọc PDF booking confirmation đính kèm | `integrations/pdf_text.py` (pdfplumber) · `EmailProcessor._store_attachment` | `test_email_pdf_conflict_requires_choice` · `test_mini_pdf_is_readable` |
+| Email ≠ PDF → không tự chọn (BR-006) | `find_conflicts` → `CONFLICT` · chọn giá trị trên `/emails/{id}` | `test_email_pdf_conflict_requires_choice` · `test_email_review_queue_flow` |
+| Ghép lô theo Conversation + điểm tin cậy; sát điểm → không tự chọn (mục 27, BR-003, BR-007, BR-019) | `core/email_match.score_candidates / decide` · `conversation_links` · ngưỡng 85 / 60 / margin 10 | `test_match_scoring_rules` · `test_request_then_confirmation_in_same_conversation` · `test_unmatched_and_user_value_kept` |
+| Hàng chờ duyệt email, người dùng chọn lô → hệ thống học Conversation | `/emails` · `EmailProcessor.apply` | `test_email_review_queue_flow` |
+| Email không ghi đè dữ liệu người dùng đã sửa | `push_to_shipments` giữ USER/MANAGER · EX020 | `test_unmatched_and_user_value_kept` |
+| Hủy booking → thông báo khẩn cho người phụ trách | `set_status` → Notification CRITICAL | `test_cancel_email_notifies_owner` · `test_cancel_then_rebook_keeps_history` |
+| Chứng từ có version, lưu ngoài DB, không ghi đè (mục 56-57) | `document_service.add_version` (SHA-256, `Năm/Buyer/NO/LOẠI/..._vN`) | `test_documents_versions_and_task_rules` |
+| Document Matrix theo Mode / Buyer / Forwarder, hạn chứng từ, duyệt | `workflow.yaml › document_rules / document_deadlines` · `workflow_service.checklist` · `/documents/{id}/status` | `test_workflow_rules_pure` · `test_documents_versions_and_task_rules` |
+| Workflow B1–B15.1, BLOCKED khi bước trước chưa xong, thiếu chứng từ không cho hoàn thành (mục 28-31) | `core/workflow.py` · `workflow_service.ensure_tasks / set_task_status` · `/tasks` | `test_documents_versions_and_task_rules` · `test_workflow_rules_pure` |
+| Tự động hóa (không bấm tay khi hệ thống đã có bằng chứng) | `auto_done` (shipment_created / booking_requested / documents / departed) · `manual_status` | `test_documents_versions_and_task_rules` |
+| Task / chứng từ quá hạn → thông báo người phụ trách | `workflow_service.deadline_events` → `engine._evaluate_deadlines` | chạy trong mọi test quét (`test_engine_e2e.py`) |
+| Weekly Planning hạn 12:00 thứ 6, lô tuần sau từ thứ 5, nhắc theo mốc (mục 36) | `core/weekly.py` · `weekly_service` · job `weekly_planning_check` · `engine._write_outputs` (horizon) · `/weekly` | `test_weekly_planning_deadline_and_reminders` · `test_weekly_file_includes_next_week_from_thursday` |
+| Vai trò Auditor chỉ đọc + ma trận quyền (mục 63) | `auth.ROLES / PERMISSIONS / PERMISSION_LABELS` · `/admin/permissions` | `test_auditor_reads_everything_but_cannot_change` · `test_new_pages_render_for_every_role` |
+| Timeline sự kiện lô hàng (mục 73-74) | `shipment_events` · trang lô hàng › Dòng thời gian | `test_split_booking_allocation_and_partial_shipment` |
+| Hiệu năng (NFR) | index `shipments`, `sync_rows` 2 truy vấn, `ensure_tasks` ghi hàng loạt, cache nhận diện header, phân trang lưới | `test_grid_booking_no_creates_booking_and_paging` · đo tải 10.000 lô (ARCHITECTURE 9.6) |
+| Nâng cấp v2 → v3 tại chỗ | `create_all` + `_add_missing_columns` + `_ensure_indexes` | `test_v2_database_gets_v3_tables_columns_and_indexes` |
+
+### Chưa làm trong v3 (theo phạm vi đã chốt)
+
+| Hạng mục | Ghi chú |
 |---|---|
-| Document Matrix / Document Package / upload chứng từ | Cần thống nhất danh mục chứng từ theo Buyer + Forwarder |
-| Email Pattern Matrix, Email Confidence, Outlook Inbox/Event | Hiện đọc Outlook theo từ khóa (`integrations/outlook.py`); matrix theo forwarder cần mẫu email thật |
-| Workflow B1–B15.1, Task Status | Cần chốt quy trình từng buyer trước khi mã hóa |
-| Booking Form / Email Template gửi đi | SRS khuyến nghị không tự gửi email từ V1 |
+| AI / OCR ảnh scan | PDF không có lớp chữ báo `NO_TEXT` → người duyệt; chỗ mở rộng: `integrations/pdf_text.py` |
+| Microsoft Graph / thư mục .eml | Chỉ Outlook desktop theo yêu cầu; phần xử lý độc lập nguồn email |
+| Tự gửi email booking / form booking | SRS khuyến nghị không tự gửi email; hệ thống đọc email người dùng gửi (Sent Items) để nhớ Conversation |

@@ -13,6 +13,7 @@ typer>=0.9.0
 rich>=13.7.0
 portalocker>=2.8.2
 tzdata>=2024.1         # mui gio cho Windows (zoneinfo)
+pdfplumber>=0.10.0     # doc chu trong PDF booking confirmation dinh kem email
 
 # Windows-only: doc Outlook desktop + mo file Excel dung o. Bo qua duoc tren Linux/macOS.
 pywin32>=306; sys_platform == "win32"

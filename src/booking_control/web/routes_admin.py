@@ -189,7 +189,8 @@ def run_job(request: Request, name: str):
     if sched is None:
         return RedirectResponse("/automation", status_code=303)
     fns = {"notification_dispatch": sched._flush_notifications, "excel_write_retry": sched._retry_pending,
-           "housekeeping": sched._housekeeping, "outlook_scan": sched._outlook_scan}
+           "housekeeping": sched._housekeeping, "outlook_scan": sched._outlook_scan,
+           "weekly_planning_check": sched._weekly_check}
     if name == "followup_scan":
         sched.scan_now(triggered_by=p.name)
     elif name in fns:

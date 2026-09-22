@@ -10,8 +10,9 @@ Mở trình duyệt Chrome / Edge, vào địa chỉ Admin gửi (ví dụ `http
 
 | Lúc | Hệ thống làm | Bạn làm |
 |---|---|---|
-| Đầu giờ | Automation đã quét Follow Up, tính trạng thái, xếp lịch nhắc | Mở **Tổng quan**: xem ô *Quá hạn / Hôm nay / D-1 / D-3* |
-| Trong ngày | Quét lại mỗi 3 giờ (09:00, 12:00, 15:00…); chuông 🔔 báo việc gấp | Làm việc trên **Follow Up (lưới Excel)**: nhập booking, CDF, BL, CONT, SEAL… |
+| Đầu giờ | Automation đã quét Follow Up, tính trạng thái, xếp lịch nhắc | Mở **Tổng quan**: xem ô *Quá hạn / Hôm nay / D-1 / D-3*, *Email chờ duyệt*, *Task quá hạn* |
+| Trong ngày | Quét lại mỗi 3 giờ (09:00, 12:00, 15:00…); đọc Outlook mỗi 30 phút; chuông 🔔 báo việc gấp | Làm việc trên **Follow Up (lưới Excel)**; duyệt **Email Outlook** hệ thống chưa chắc; bấm xong việc ở **Việc của tôi** |
+| Thứ 5 → 12:00 thứ 6 | Weekly Planning tự ghi thêm các lô tuần sau; nhắc thứ 5 08:00, thứ 6 08:00, 11:00 | Bổ sung lô còn thiếu (booking, forwarder, container); 👔 **Chốt Weekly Planning** |
 | T-7 trước EX-FACT | Tự điền Weekly Planning + Custom Code | Kiểm tra HS Code, CO |
 | T-3 | Báo đích danh trường còn thiếu (Carton, GW…) | Bổ sung |
 | T-1 | Tự điền Lịch xuất hàng TDV/TGV | — |
@@ -159,7 +160,91 @@ Quyền kiểm tra ở máy chủ: Người dùng chỉ bao giờ nhận đượ
 
 ---
 
-## 8. 👔 Phân công lô hàng
+## 8. Booking — tách riêng khỏi lô hàng
+
+Menu **Booking**. Một booking có thể phục vụ **nhiều lô** (booking gộp), một lô có thể nằm trong **nhiều booking** (tách lô: 600 + 400 = 1000). Booking **không bao giờ bị xóa**: hủy thì chuyển *Đã hủy*, rebook thì tạo booking mới trỏ về booking cũ.
+
+![Booking](images/booking_detail.png)
+
+| Việc | Cách làm |
+|---|---|
+| Tạo booking | Trang lô hàng → **+ Tạo booking cho lô này**, hoặc Booking → **+ Tạo booking**. Chọn một hay nhiều lô; ô *Số lượng phân bổ* để trống = cả lô |
+| Tách lô ra 2 booking | Tạo booking thứ nhất với số lượng 600, booking thứ hai 400. Thiếu số lượng → cột *Đủ?* báo **PARTIAL thiếu …** và Exception **EX018** |
+| Gộp lô vào booking có sẵn | Trang booking → ô *Thêm lô / đổi số lượng* |
+| Gõ BOOKING NO trên lưới / trong file Excel | Hệ thống tự tạo (hoặc nối vào) booking cùng số — không cần làm gì thêm |
+| Sửa ETD / Vessel / Cut-off | Trang booking → **Thông tin booking** → Lưu. Booking No / ETD / ETA / Vessel / Closing tự ghi sang các lô trên lưới Follow Up |
+| Hold / Giải tỏa / Trễ lịch / Xin hủy / Hủy | **Chuyển trạng thái** (Hủy và Hold bắt buộc ghi lý do). Hold → dòng đỏ; hủy → người phụ trách nhận thông báo khẩn |
+| Rebook | Trang booking → **Rebook**: nhập số booking mới. Booking cũ → *Đã hủy* + trỏ sang booking mới; lô hàng nhận số mới |
+| Xuất một phần | Trang lô hàng → **Xuất hàng thực tế** → nhập ngày, số lượng, container, seal. Tổng < số lượng lô → *Xuất một phần* (cam); đủ → *Đã xuất xong* |
+
+Lô hàng có 3 trạng thái riêng, hiển thị ngay dưới tên lô: **Booking** (chưa book / đã gửi yêu cầu / đã xác nhận / hold / đã hủy…), **Hold** (NO_HOLD / HOLD / RELEASED) và **Xuất** (chưa / một phần / đủ). Màu dòng chỉ là cách hiển thị gộp của 3 trạng thái này.
+
+Số BOOKING NO trong file Excel đổi sang số khác mà booking cũ vẫn hiệu lực → **EX019**: nếu là rebook thì vào trang booking cũ bấm Hủy / Rebook; hệ thống không tự hủy thay bạn.
+
+---
+
+## 9. Email Outlook — hàng chờ duyệt
+
+Máy chủ đọc Outlook desktop (Inbox + Sent Items) mỗi 30 phút. Với mỗi email booking, hệ thống:
+
+1. **Phân loại**: yêu cầu booking, xác nhận, điều chỉnh, trễ lịch, rebook, hold, giải tỏa hold, hủy.
+2. **Đọc thông tin** trong nội dung **và** trong file PDF booking confirmation đính kèm: Booking No, Vessel / Voyage, ETD, ETA, CY / SI-VGM cut-off, Closing, container.
+3. **Tìm lô hàng** bằng mã có thật trong hệ thống (JO, GO, PO, INVOICE, Booking No) + cùng **Conversation** / trả lời email đã ghép trước đó → tính **điểm**.
+4. **≥ 85 điểm** và email khớp PDF → tự cập nhật booking + lô hàng. **60–84 điểm**, hai lô sát điểm nhau, hoặc **email ≠ PDF** → vào hàng chờ duyệt, không đoán.
+
+![Email ≠ PDF](images/email_conflict.png)
+
+Menu **Email Outlook** có các thẻ *Chờ duyệt / Email ≠ PDF / Chưa ghép / Đã áp dụng / Bỏ qua*. Mở một email:
+
+- Bảng **Thông tin đọc được** so sánh email và PDF; dòng tô cam là chỗ khác nhau → chọn *email* hoặc *PDF*.
+- Bảng **Lô hàng gợi ý** có điểm và lý do (Cùng Conversation +70, Booking No +70, JO +45…). Tích lô đúng (booking gộp thì tích nhiều lô), thêm lô khác bằng ô tìm JO, chỉnh *Loại email* nếu cần → **Áp dụng vào lô đã chọn**.
+- Email không liên quan → **Bỏ qua**.
+
+Sau khi bạn ghép một email, hệ thống **nhớ Conversation**: các email trả lời sau trong cùng luồng tự ghép. Mẹo: gửi email yêu cầu booking có ghi JO + INVOICE ở tiêu đề — email xác nhận trả về sẽ tự khớp.
+
+Ô bạn đã sửa tay trên lưới (ví dụ ETD) sẽ **không bị email ghi đè**; hệ thống giữ giá trị của bạn và tạo **EX020** để bạn xem lại. PDF booking confirmation được lưu tự động vào chứng từ **BOOKING** của lô.
+
+Người dùng thấy email của lô mình + email chưa ghép được (để nhận về); 👔 Quản lý và Auditor thấy tất cả.
+
+---
+
+## 10. Chứng từ (Document Matrix)
+
+Trang lô hàng → mục **Chứng từ**: danh sách chứng từ bắt buộc theo Mode / Buyer / Forwarder (cấu hình trong `config/workflow.yaml`), hạn nộp và trạng thái *MISSING / OVERDUE / OK / APPROVED / REJECTED*.
+
+- **Tải lên**: chọn loại, chọn file → mỗi lần tải là một **version mới** (v1, v2…), bản cũ vẫn tải về được. File giống hệt bản trước thì không tạo version.
+- File được lưu theo quy tắc `Năm/Buyer/NO/LOẠI/NO_LOẠI_vN` trong thư mục chứng từ của máy chủ.
+- 👔 Quản lý bấm **Duyệt** / **Trả lại** (trả lại = coi như chưa có).
+- Chứng từ bắt buộc quá hạn → thông báo cho người phụ trách mỗi ngày.
+
+---
+
+## 11. Việc của tôi (quy trình B1 → B15.1)
+
+Mỗi lô tự có các bước B1…B15.1 (Shipment Schedule, gửi yêu cầu booking, Invoice + PKL, kéo container, SI, VGM, tờ khai, Draft Bill, CO, Surrender Bill, Debit Note…) với hạn tính theo EX-FACT hoặc ETD (ETD đổi → hạn tự đổi).
+
+![Việc của tôi](images/tasks.png)
+
+- **BLOCKED**: bước trước chưa xong. **OVERDUE**: quá hạn. Không bấm *Xong* được khi còn thiếu chứng từ bắt buộc của bước.
+- Nhiều bước **tự hoàn thành** khi hệ thống thấy bằng chứng: B1 khi lô có trong Follow Up, B2 khi đã có booking, B3 / B4 / B7 / B14 khi đủ chứng từ, B13 khi tàu chạy / xuất đủ. Bạn *Mở lại* một bước thì hệ thống không tự đóng lại bước đó nữa.
+- Bước không áp dụng (ví dụ lô không cần CO) không được sinh ra.
+- 👔 Quản lý chọn người để xem việc của cả team và đổi hạn một task khi cần.
+
+---
+
+## 12. Weekly Planning — hạn 12:00 thứ 6
+
+Menu **Weekly Planning**: danh sách lô **tuần sau** và cột *Còn thiếu* (chưa phân công, chưa booking, chưa forwarder, thiếu số lượng, chưa có kế hoạch container).
+
+![Weekly Planning](images/weekly.png)
+
+- Từ thứ 5, file WEEKLY PLANNING tự ghi thêm các lô của tuần sau (không chỉ lô trong 7 ngày).
+- Nhắc: thứ 5 08:00 (thông tin), thứ 6 08:00 (cảnh báo), thứ 6 11:00 (khẩn) — gửi Quản lý và người phụ trách các lô còn thiếu, mỗi mốc một lần.
+- 👔 Quản lý bấm **Chốt Weekly Planning** (ghi chú nếu còn lô chờ). Quá 12:00 thứ 6 chưa chốt → thông báo *QUÁ HẠN*.
+
+---
+
+## 13. 👔 Phân công lô hàng
 
 ### Tự động
 
@@ -183,7 +268,7 @@ Người được giao nhận **một** thông báo gom nhóm ("Bạn được g
 
 ---
 
-## 9. 👔 Nhập file Follow Up
+## 14. 👔 Nhập file Follow Up
 
 Menu **Nhập Excel**: chọn file `.xlsx` + người phụ trách → **Xem trước** (bao nhiêu sheet, bao nhiêu lô *THÊM MỚI* / *CẬP NHẬT*) → **Nhập**. Nhập lại cùng file cho cùng người sẽ cập nhật, không tạo trùng. File gốc không bị sửa. Lỗi dữ liệu (thiếu ngày, công thức bị gõ đè…) vào Exception Center.
 
@@ -191,7 +276,7 @@ Dùng khi chuyển hẳn sang làm trên web: nhập file Follow Up hiện tại
 
 ---
 
-## 10. Exception Center
+## 15. Exception Center
 
 Mọi thứ hệ thống không chắc chắn đều vào đây — hệ thống **không tự đoán**. Người dùng thấy exception của lô mình; Quản lý xử lý.
 
@@ -212,22 +297,25 @@ Mọi thứ hệ thống không chắc chắn đều vào đây — hệ thống
 | **EX015** | **File Excel khác giá trị đã sửa trên web** — hệ thống đang giữ giá trị web. Quản lý bấm *Giữ giá trị web* hoặc *Lấy giá trị Excel* |
 | **EX016** | Người dùng sửa cột cần Quản lý xem lại (BUYER, EX-FACT DATE, JO, ORDER QTY, 100% FOB) |
 | **EX017** | Forwarder cần xác nhận (nhiều rule khớp / khác với email) |
+| **EX018** | Booking tách lô chưa phân bổ đủ số lượng (vd mới 600 / 1000) hoặc phân bổ vượt |
+| **EX019** | BOOKING NO trên Excel / lưới đổi sang số khác trong khi booking cũ còn hiệu lực — xác nhận Hủy / Rebook |
+| **EX020** | Email Outlook báo giá trị khác ô bạn đã sửa tay — hệ thống giữ giá trị của bạn, hãy kiểm tra |
 
 ---
 
-## 11. Forwarder
+## 16. Forwarder
 
 Theo `buyer_rules.yaml › forwarder_rules`: Buyer + Mode + Dest + Port → Forwarder. Một rule khớp → **AUTO_ASSIGNED**; nhiều rule → **NEED_CONFIRM** (không tự chọn); không có → **NOT_ASSIGNED**. Trang chi tiết lô → ô Forwarder → **Chốt forwarder** (trạng thái *MANUAL*, Automation không đổi nữa; để trống = quay lại theo rule).
 
 ---
 
-## 12. 👔 Automation
+## 17. 👔 Automation
 
-Menu **Automation**: các tác vụ nền (quét Follow Up, phát thông báo, ghi lại file bị khóa, đọc Outlook, dọn dẹp) với lần chạy kế tiếp, nút **Chạy ngay**, và **lịch sử chạy** (Job ID, bắt đầu, kết thúc, trạng thái, số lần thử lại, lỗi). **Dry Run** cho xem trước một lần quét mà không ghi file nào. Admin tạm dừng / chạy tiếp được.
+Menu **Automation**: các tác vụ nền (quét Follow Up, phát thông báo, ghi lại file bị khóa, đọc Outlook, nhắc Weekly Planning, dọn dẹp) với lần chạy kế tiếp, nút **Chạy ngay**, và **lịch sử chạy** (Job ID, bắt đầu, kết thúc, trạng thái, số lần thử lại, lỗi). **Dry Run** cho xem trước một lần quét mà không ghi file nào. Admin tạm dừng / chạy tiếp được.
 
 ---
 
-## 13. Hỏi nhanh
+## 18. Hỏi nhanh
 
 **Vẫn sửa file Excel Follow Up được không?** Được. Hệ thống vẫn quét file mỗi 3 giờ. Ô nào đã sửa trên web thì web thắng; nếu sau đó file Excel đổi ô đó thành giá trị khác → EX015 cho Quản lý quyết. Lời khuyên: mỗi cột nên sửa ở **một** nơi.
 
@@ -236,5 +324,11 @@ Menu **Automation**: các tác vụ nền (quét Follow Up, phát thông báo, g
 **Tôi không thấy lô của đồng nghiệp?** Đúng quyền — Người dùng chỉ thấy lô được giao (chính hoặc dự phòng). Nhờ Quản lý giao dự phòng khi cần làm thay.
 
 **Lỡ lưu trữ nhầm lô?** 👔 Mở chi tiết lô (tìm ở Audit Log) → **Bỏ lưu trữ**. Dữ liệu không bao giờ bị xóa.
+
+**Email booking không tự ghép?** Mở **Email Outlook → Chưa ghép**, chọn lô và Áp dụng. Lần sau email cùng luồng sẽ tự ghép. Nếu forwarder dùng nhãn lạ (vd "Sailing:" thay cho "ETD:"), nhờ Admin thêm vào `field_aliases` trong `config/email_profiles.yaml`.
+
+**Hủy nhầm booking?** Booking đã hủy không mở lại được (giữ lịch sử); dùng **Rebook** để tạo booking thay thế — có thể dùng lại số booking cũ.
+
+**Auditor làm được gì?** Chỉ xem: mọi lô, booking, email, chứng từ, Audit Log và ma trận quyền; không sửa gì.
 
 **Máy chủ tắt thì sao?** Không vào được web, Automation dừng. Khi bật lại, hệ thống quét bù ngay và phát các thông báo đang chờ.

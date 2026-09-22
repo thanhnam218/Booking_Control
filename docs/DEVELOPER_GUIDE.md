@@ -65,29 +65,73 @@ database:
 
 ---
 
-## Bản đồ mã nguồn v2
+## Bản đồ mã nguồn (v3)
 
 ```
 src/booking_control/
-├── core/                 Logic thuần: status, container, deadline, shipment key, forwarder rule
+├── core/                 Logic thuần (không DB) - test nhanh, dễ đọc
+│   ├── booking.py            v3: vòng đời booking, TRANSITIONS, split / gộp, trạng thái lô từ booking
+│   ├── email_parse.py        v3: phân loại email, đọc "Nhãn: giá trị", ngày "02 OCT", so email ↔ PDF
+│   ├── email_match.py        v3: token hóa + chấm điểm ghép lô (Conversation, Reply, Booking No, JO...)
+│   ├── workflow.py           v3: bước B1-B15.1, hạn, BLOCKED/OVERDUE, Document Matrix, auto_done
+│   ├── weekly.py             v3: tuần kế hoạch, hạn 12:00 thứ 6, mốc nhắc
+│   └── status / container / deadline / shipment / forwarder / normalize ...
+├── db/models.py, models_v3.py   Bảng v1-v2 / bảng v3 (bookings, booking_shipments, shipment_executions,
+│                                shipment_events, emails, email_attachments, conversation_links,
+│                                documents, document_versions, workflow_tasks)
 ├── excel/                Đọc (openpyxl) + ghi lossless (lxml) file Excel
 ├── followup/template.py  Khung 47 cột + Field Ownership + công thức (Python / JS / Excel)
+├── integrations/
+│   ├── outlook.py            v3: đọc Outlook desktop qua COM (Inbox + Sent, Message-ID, Conversation, file đính kèm)
+│   ├── outlook_demo.py       v3: 5 email mẫu (bookingctl outlook --demo) + mini_pdf()
+│   └── pdf_text.py           v3: pdfplumber -> chữ trong PDF (NO_TEXT nếu là ảnh scan)
 ├── services/
-│   ├── shipment_service.py   Phạm vi theo quyền, sửa ô, tạo lô, lưu trữ, xử lý EX015
+│   ├── shipment_service.py   Phạm vi theo quyền, sửa ô, tạo lô, lưu trữ, EX015; gõ BOOKING NO -> booking
+│   ├── booking_service.py    v3: tạo / sửa / trạng thái / rebook / split / xuất một phần / đẩy sang 47 cột
+│   ├── email_service.py      v3: EmailProcessor.ingest -> process -> _match -> apply (hàng chờ duyệt)
+│   ├── document_service.py   v3: lưu file ngoài DB, version theo SHA-256
+│   ├── workflow_service.py   v3: sinh / cập nhật task hàng loạt, checklist, deadline_events
+│   ├── weekly_service.py     v3: Weekly Planning tuần sau, chốt, nhắc
 │   ├── assignment.py         Giao / giao lại / auto-assign / workload
 │   └── excel_export.py       Xuất 1 Buyer = 1 sheet, 47 cột + cột hệ thống
 ├── engine.py             AutomationEngine: pipeline quét + apply_values() dùng chung
 ├── scheduler.py          AutomationScheduler: các job + JobRun (retry)
 ├── web/
-│   ├── auth.py           Mật khẩu, phiên, CSRF, PERMISSIONS, Principal
+│   ├── auth.py           Mật khẩu, phiên, CSRF, PERMISSIONS (+ PERMISSION_LABELS), Principal
 │   ├── deps.py           auth_guard (dependency toàn cục), render(), require()
 │   ├── routes_auth.py    /login /setup /account
 │   ├── routes_main.py    Tổng quan, lô hàng, exception, thông báo, audit
-│   ├── routes_grid.py    /followup + /api/followup/* + /export + /import
+│   ├── routes_grid.py    /followup + /api/followup/* (phân trang) + /export + /import
+│   ├── routes_booking.py v3: /bookings, /bookings/new, /bookings/{id}/*, /shipments/{code}/executions
+│   ├── routes_email.py   v3: /emails, /emails/{id}/apply|ignore|files
+│   ├── routes_work.py    v3: chứng từ, /tasks, /weekly, /admin/permissions, dữ liệu v3 cho trang lô hàng
 │   ├── routes_admin.py   Người dùng, phân công, automation, mapping, cài đặt, backup
 │   ├── templates/        Jinja2
 │   └── static/           app.js, followup.js, *.css, vendor/ (Jspreadsheet CE, jSuites - MIT)
-└── cli.py                bookingctl run | user | scan | check | ...
+└── cli.py                bookingctl run | user | scan | check | outlook [--demo] | ...
+```
+
+Cấu hình nghiệp vụ v3 (không cần sửa code):
+
+| File | Nội dung |
+|---|---|
+| `config/email_profiles.yaml` | ngưỡng điểm, trọng số, từ khóa phân loại, nhãn trường, forwarder (tên miền + nhãn riêng) |
+| `config/workflow.yaml` | loại chứng từ, Document Matrix, hạn chứng từ, bước B1-B15.1 (anchor, offset, depends_on, required_docs, modes, only_if, auto_done) |
+
+Luồng một email Outlook:
+
+```
+scheduler outlook_scan ─▶ integrations.outlook.scan_outlook()  (COM, chỉ email mới từ mốc system_settings)
+   └─ EmailProcessor.ingest(msgs):
+        trùng message_id? -> bỏ (NFR-03)
+        extract_fields(thân email) + extract_text(PDF) -> extract_fields(PDF) -> find_conflicts
+        classify(tiêu đề, nội dung + PDF)
+        _match: ConversationLink / Booking.conversation_id (+70), reply email đã APPLIED (+35),
+                token trùng Booking No / JO / INVOICE / GO / PO có thật trong DB, + Buyer/ETD/Vessel/Forwarder
+        decide(): >= 85 và 1 lô (hoặc nhiều lô cùng Conversation/Booking) -> AUTO; sát điểm -> REVIEW
+        AUTO + không mâu thuẫn -> apply(): booking_service (tạo / xác nhận / điều chỉnh / hold / hủy / rebook)
+              -> push_to_shipments (giữ ô USER/MANAGER, EX020) -> lưu PDF thành chứng từ BOOKING
+              -> ConversationLink -> shipment_events -> engine.recompute
 ```
 
 Luồng một lần sửa ô trên lưới:
@@ -136,6 +180,18 @@ self._sched.add_job(lambda: self.run_job("weekly_report", self._weekly_report),
 ```
 
 `run_job()` tự ghi `JobRun` (bắt đầu, kết thúc, trạng thái, lỗi, số lần thử lại theo `jobs.max_retries`). Thêm tên + mô tả vào `JOB_TITLES` để hiện trên trang Automation, và vào `fns` trong `routes_admin.run_job` nếu muốn có nút *Chạy ngay*.
+
+### Thêm bước quy trình / chứng từ
+
+`config/workflow.yaml`: thêm dòng vào `steps` (mã, tên, anchor EXFTY/ETD/BOOKING, offset ngày, depends_on, required_docs, modes, only_if, auto_done). Lần quét sau task được sinh cho các lô trong khung `generate_window_days`; task chưa xong tự nhận tên / thứ tự / phụ thuộc mới (so bằng hash cấu hình). Điều kiện `auto_done` mới: thêm vào `core/workflow.py → AUTO_DONE` + `auto_done()`.
+
+### Thêm loại email / nhãn forwarder
+
+`config/email_profiles.yaml → categories` (thứ tự = độ ưu tiên) và `field_aliases`. Loại mới cần hành động riêng: thêm nhánh trong `EmailProcessor.apply()`. Test bằng `MailMessage(...)` giả lập — không cần Outlook (xem `tests/test_v3_booking_email.py`).
+
+### Thêm trạng thái booking
+
+`core/booking.py`: `TRANSITIONS` (đường đi hợp lệ), `STATUS_LABELS`, nhóm `HELD_SPACE` / `ACTIVE` / `CLOSED`; sự kiện tương ứng trong `booking_service.EVENT_OF_STATUS`; màu trong `app.css` (`.bk.<STATUS>`).
 
 ### API cho công cụ khác
 
@@ -304,7 +360,9 @@ notification:
 
 ## Viết test
 
-Test web dùng `fastapi.testclient.TestClient` trên bộ dữ liệu demo — xem `tests/test_web_v2.py` (hàm `login(app, user)` lấy sẵn CSRF). Mỗi quy tắc phân quyền nên có một test *bị từ chối* bên cạnh test *được phép*.
+Test web dùng `fastapi.testclient.TestClient` trên bộ dữ liệu demo — xem `tests/test_web_v2.py`, `tests/test_v3_web.py` (hàm `login(app, user)` lấy sẵn CSRF). Mỗi quy tắc phân quyền nên có một test *bị từ chối* bên cạnh test *được phép*.
+
+Email Outlook được test không cần Outlook: tạo `MailMessage(message_id=..., subject=..., body=..., conversation_id=..., in_reply_to=..., attachments=[MailAttachment("x.pdf", pdf_bytes)])` rồi `EmailProcessor(engine).ingest(s, [msg], today)`. PDF mẫu: `reportlab` (dev) hoặc `integrations.outlook_demo.mini_pdf(["Booking No: X", "ETD: 03 OCT"])`.
 
 Bộ test chia hai nhóm:
 
@@ -416,10 +474,10 @@ Bước cuối là smoke test: đảm bảo toàn bộ pipeline chạy được 
 
 | Việc | Ghi chú |
 |---|---|
-| Alembic migration | Hiện dùng `create_all`; cần migration khi đã có dữ liệu production |
-| Microsoft Graph API | Thay đường dẫn OneDrive sync bằng API — bỏ được ràng buộc phải sync về máy |
+| Alembic migration | Hiện dùng `create_all` + tự thêm cột / index thiếu; cần migration khi đổi kiểu cột trên dữ liệu production |
+| OCR PDF scan | PDF ảnh hiện báo `NO_TEXT` → người duyệt; có thể thêm Tesseract / Azure Document Intelligence trong `integrations/pdf_text.py` |
+| Microsoft Graph API | Nếu sau này không muốn phụ thuộc Outlook desktop: thay `integrations/outlook.fetch_messages()` — phần xử lý (`EmailProcessor`) giữ nguyên |
 | SSO / Active Directory | Hiện dùng tài khoản riêng (PBKDF2); có thể thay `web/auth.py` bằng LDAP/Entra ID |
-| Document / Task / Email Matrix | SRS v2 mục Document Matrix, Email Pattern Matrix — chưa làm, đã có chỗ trong `services/` |
 | Hàng đợi job riêng | Khi nhiều máy chủ: chuyển `run_job` sang Celery/RQ (chạy trên Linux) |
-| Outlook auto-apply | Đã có, mặc định tắt — cần chạy thử với hộp thư thật trước khi bật |
-| Analytics | Tỷ lệ booking đúng hạn, thời gian trung bình từ book đến có BL |
+| SQL Server > 2.100 lô / truy vấn | Một số truy vấn `IN (...)` chưa chia lô cho SQL Server (SQLite / PostgreSQL không giới hạn) |
+| Analytics | Tỷ lệ booking đúng hạn, thời gian trung bình từ book đến có BL, số email tự ghép / phải duyệt |

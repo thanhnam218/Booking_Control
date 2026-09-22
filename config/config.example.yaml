@@ -333,23 +333,38 @@ jobs:
   outlook_interval_minutes: 30
 
 # -----------------------------------------------------------------------------
-# OUTLOOK  (yeu cau: "cap nhat trang thai da book hay chua tu mail outlook")
+# OUTLOOK DESKTOP (SRSv5 muc 19-27) - may chu phai cai Outlook va dang mo hop thu
+# Phan loai / ghep lo / diem tin cay: config/email_profiles.yaml
 # -----------------------------------------------------------------------------
 outlook:
-  enabled: false                # bat len khi chay tren may co Outlook desktop
-  folders: ["Inbox", "Booking"]
-  lookback_days: 30
-  # Mail co chua 1 trong cac tu khoa nay -> coi la xac nhan booking
-  booking_confirm_keywords:
-    - "booking confirmation"
-    - "booking confirmed"
-    - "BKG CONFIRM"
-    - "S/O"
-    - "shipping order"
-    - "xac nhan booking"
-  cancel_keywords:
-    - "booking cancel"
-    - "cancelled"
-    - "huy booking"
-  # Automation chi GOI Y, User phai xac nhan trong Exception Center truoc khi doi trang thai
-  auto_apply: false
+  enabled: false                # bat len khi chay tren may chu co Outlook desktop + pywin32
+  mailbox: ""                   # de trong = hop thu mac dinh; hoac ten hop thu dung chung "booking@company.com"
+  folders: ["Inbox", "Sent Items"]   # Sent Items: email yeu cau booking minh gui -> nho Conversation
+  lookback_days: 14             # lan dau doc lui 14 ngay; sau do chi doc email moi
+  max_items: 500                # toi da moi thu muc / lan quet
+  attachment_exts: [".pdf", ".xlsx", ".xls", ".docx"]
+  max_attachment_mb: 15
+  body_chars: 6000              # chi luu doan dau than email
+  # true: email du diem (>= 85) va email/PDF khong mau thuan -> tu cap nhat booking + lo hang
+  # false: moi email vao hang cho duyet (trang Email), nguoi dung bam Ap dung
+  auto_apply: true
+
+# -----------------------------------------------------------------------------
+# CHUNG TU (SRSv5 muc 56-57) - luu file ngoai database, khong ghi de version cu
+# -----------------------------------------------------------------------------
+documents:
+  root: ""                      # de trong = <data_dir>/documents; co the dat o NAS: "\\\\server\\share\\docs"
+  max_upload_mb: 25
+  allowed_exts: [".pdf", ".xlsx", ".xls", ".xlsm", ".docx", ".doc", ".png", ".jpg", ".jpeg", ".zip", ".msg", ".eml"]
+
+# -----------------------------------------------------------------------------
+# WEEKLY PLANNING - phai xong truoc 12:00 thu 6 (SRSv5 muc 36)
+# -----------------------------------------------------------------------------
+weekly_planning:
+  enabled: true
+  include_next_week_from: "thu"  # tu thu 5: Weekly Planning ghi luon cac lo cua tuan sau
+  deadline: "fri 12:00"
+  reminders:
+    - { at: "thu 08:00", level: INFO }
+    - { at: "fri 08:00", level: WARNING }
+    - { at: "fri 11:00", level: CRITICAL }

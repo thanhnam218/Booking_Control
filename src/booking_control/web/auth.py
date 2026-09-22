@@ -5,6 +5,7 @@
         manager  Xem tat ca lo hang, phan cong / giao lai, duyet override, xu ly exception, export
         user     Chi xem & sua lo hang duoc giao (chinh hoac du phong), export lo cua minh
         viewer   Chi xem (tuy chon - vd ke toan, kho)
+        auditor  Kiem soat: chi xem tat ca lo / booking / email / chung tu / audit log, khong sua (SRSv5 muc 63)
 
     - Mat khau luu dang PBKDF2-SHA256 (thu vien chuan Python, khong can cai them).
     - Cookie chi chua token ngau nhien; DB luu SHA-256 cua token.
@@ -29,30 +30,65 @@ from sqlalchemy.orm import Session
 from ..db.models import User, WebSession, utcnow
 
 COOKIE_NAME = "bc_session"
-ROLES = ("admin", "manager", "user", "viewer")
-ROLE_LABELS = {"admin": "Quản trị", "manager": "Quản lý", "user": "Người dùng", "viewer": "Chỉ xem"}
+ROLES = ("admin", "manager", "user", "viewer", "auditor")
+ROLE_LABELS = {"admin": "Quản trị", "manager": "Quản lý", "user": "Người dùng", "viewer": "Chỉ xem",
+               "auditor": "Kiểm soát (Auditor)"}
+READ_ALL = {"admin", "manager", "viewer", "auditor"}
 USERNAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{1,39}$")
 PBKDF2_ITER = 260_000
 
 PERMISSIONS: dict[str, set[str]] = {
-    "shipments.view_all": {"admin", "manager", "viewer"},
+    # Lo hang
+    "shipments.view_all": READ_ALL,
     "shipments.edit": {"admin", "manager", "user"},
     "shipments.create": {"admin", "manager", "user"},
     "shipments.archive": {"admin", "manager"},
     "shipments.assign": {"admin", "manager"},
-    "exceptions.view_all": {"admin", "manager", "viewer"},
+    # Booking (nguoi dung: chi lo duoc giao)
+    "booking.edit": {"admin", "manager", "user"},
+    "booking.cancel": {"admin", "manager", "user"},
+    "execution.record": {"admin", "manager", "user"},
+    # Email Outlook
+    "email.review": {"admin", "manager", "user"},
+    "email.view_all": {"admin", "manager", "auditor"},
+    # Chung tu + quy trinh
+    "document.upload": {"admin", "manager", "user"},
+    "document.approve": {"admin", "manager"},
+    "workflow.complete": {"admin", "manager", "user"},
+    "tasks.view_all": READ_ALL,
+    "weekly.confirm": {"admin", "manager"},
+    # Exception / automation / bao cao
+    "exceptions.view_all": READ_ALL,
     "exceptions.resolve": {"admin", "manager"},
     "automation.run": {"admin", "manager"},
     "automation.pause": {"admin"},
-    "export.all": {"admin", "manager", "viewer"},
+    "export.all": READ_ALL,
     "import.excel": {"admin", "manager"},
-    "audit.view": {"admin", "manager"},
-    "reports.team": {"admin", "manager", "viewer"},
+    "audit.view": {"admin", "manager", "auditor"},
+    "reports.team": READ_ALL,
+    # Quan tri
     "config.mapping": {"admin"},
     "config.buyers": {"admin"},
     "config.settings": {"admin"},
     "config.backups": {"admin"},
     "users.manage": {"admin"},
+}
+
+PERMISSION_LABELS = {
+    "shipments.view_all": "Xem tất cả lô hàng", "shipments.edit": "Sửa lô hàng (người dùng: lô được giao)",
+    "shipments.create": "Tạo lô hàng mới", "shipments.archive": "Lưu trữ lô hàng",
+    "shipments.assign": "Phân công / giao lại lô", "booking.edit": "Tạo / sửa / tách / gộp booking",
+    "booking.cancel": "Hủy / rebook / hold booking", "execution.record": "Ghi nhận xuất hàng (một phần)",
+    "email.review": "Duyệt email Outlook (ghép lô, áp dụng)", "email.view_all": "Xem mọi email",
+    "document.upload": "Tải lên chứng từ", "document.approve": "Duyệt / trả lại chứng từ",
+    "workflow.complete": "Hoàn thành task B1–B15.1", "tasks.view_all": "Xem task của mọi người",
+    "weekly.confirm": "Chốt Weekly Planning", "exceptions.view_all": "Xem mọi exception",
+    "exceptions.resolve": "Xử lý exception", "automation.run": "Chạy job tự động",
+    "automation.pause": "Tạm dừng Automation", "export.all": "Xuất Excel toàn bộ",
+    "import.excel": "Nhập file Excel", "audit.view": "Xem Audit Log", "reports.team": "Báo cáo team",
+    "config.mapping": "Cấu hình mapping", "config.buyers": "Cấu hình Buyer / Forwarder",
+    "config.settings": "Cài đặt hệ thống", "config.backups": "Backup / khôi phục",
+    "users.manage": "Quản lý người dùng & vai trò",
 }
 
 
@@ -272,6 +308,6 @@ def can(role: str, perm: str) -> bool:
 
 def owns(principal: Principal, assigned_to: str, backup_owner: str = "") -> bool:
     """Nguoi dung thuong chi thao tac tren lo duoc giao (chinh hoac du phong)."""
-    if principal.can("shipments.view_all") and principal.role != "viewer":
+    if principal.can("shipments.view_all") and principal.can("shipments.edit"):
         return True
     return principal.name in (assigned_to or "", backup_owner or "")

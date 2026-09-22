@@ -10,6 +10,7 @@ from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from . import models_v3  # noqa: F401 - dang ky bang v3 vao Base.metadata
 from .models import Base
 
 _engine: Engine | None = None
@@ -35,6 +36,7 @@ def init_engine(url: str, echo: bool = False) -> Engine:
     _rename_legacy_columns(_engine)
     Base.metadata.create_all(_engine)
     _add_missing_columns(_engine)
+    _ensure_indexes(_engine)
     _SessionFactory = sessionmaker(bind=_engine, expire_on_commit=False, future=True)
     return _engine
 
@@ -131,3 +133,16 @@ def _rename_legacy_columns(engine: Engine) -> list[str]:
                     conn.execute(text(f"ALTER TABLE {table} RENAME COLUMN {old} TO {new}"))
                     done.append(f"{table}.{old}->{new}")
     return done
+
+
+def _ensure_indexes(engine: Engine) -> None:
+    """Tao index moi cho bang da ton tai tu phien ban cu (create_all chi tao cho bang moi)."""
+    insp = inspect(engine)
+    tables = set(insp.get_table_names())
+    for table in Base.metadata.sorted_tables:
+        if table.name not in tables:
+            continue
+        have = {ix["name"] for ix in insp.get_indexes(table.name)}
+        for ix in table.indexes:
+            if ix.name and ix.name not in have:
+                ix.create(bind=engine, checkfirst=True)

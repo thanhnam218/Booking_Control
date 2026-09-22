@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+{% set wd = ['T2','T3','T4','T5','T6','T7','CN'] %}
+<h2>Weekly Planning {{ w.label }}</h2>
+<p class="page-sub">Tuần {{ w.start.strftime('%d/%m') }} – {{ w.end.strftime('%d/%m/%Y') }} &middot;
+  hạn chốt <b>{{ w.deadline.strftime('%H:%M') }} {{ wd[w.deadline.weekday()] }} {{ w.deadline.strftime('%d/%m') }}</b>
+  {% if not w.confirmed %}&middot; {% if w.late %}<span class="late">ĐÃ QUÁ HẠN</span>{% else %}còn {{ w.hours_left }} giờ{% endif %}{% endif %}
+  &middot; từ thứ 5 file Weekly Planning tự ghi thêm các lô của tuần sau.</p>
+{% if msg %}<div class="flash ok">{{ msg }}</div>{% endif %}
+{% if err %}<div class="flash err">{{ err }}</div>{% endif %}
+{% if w.confirmed %}
+  <div class="flash ok">Đã chốt bởi {{ w.confirmed.by }} lúc {{ w.confirmed.at }}{% if w.confirmed.late %} (trễ hạn){% endif %}
+    &middot; lúc chốt: {{ w.confirmed.total }} lô, còn thiếu {{ w.confirmed.incomplete }}{% if w.confirmed.note %} &middot; {{ w.confirmed.note }}{% endif %}</div>
+{% elif w.late %}
+  <div class="flash err">Weekly Planning tuần {{ w.label }} chưa được chốt và đã quá 12:00 thứ 6.</div>
+{% endif %}
+
+<div class="grid tiles" style="margin-bottom:14px">
+  <div class="tile" style="border-left-color:var(--accent)"><div class="n">{{ w.total }}</div><div class="l">Lô tuần sau</div></div>
+  <div class="tile" style="border-left-color:{{ 'var(--red)' if w.incomplete else 'var(--green)' }}"><div class="n">{{ w.incomplete }}</div><div class="l">Còn thiếu thông tin</div></div>
+  <div class="tile" style="border-left-color:var(--green)"><div class="n">{{ w.total - w.incomplete }}</div><div class="l">Đã đủ</div></div>
+</div>
+
+<div class="toolbar">
+  {% if me.can('shipments.view_all') %}
+    <a class="btn ghost" href="/weekly{{ '' if mine else '?mine=1' }}">{{ 'Xem cả team' if mine else 'Chỉ lô của tôi' }}</a>
+  {% endif %}
+  {% if me.can('weekly.confirm') and not w.confirmed %}
+  <form class="inline" method="post" action="/weekly/confirm" style="margin-left:auto">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <input name="note" placeholder="Ghi chú (vd 2 lô chờ buyer)" size="30">
+    <button type="submit">Chốt Weekly Planning</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="card scroll-x">
+<table>
+  <thead><tr><th>EX-FACT</th><th>JO</th><th>NO</th><th>Buyer</th><th class="right">SL</th><th>Mode</th><th>Container</th>
+    <th>Forwarder</th><th>Booking</th><th>Phụ trách</th><th>Còn thiếu</th></tr></thead>
+  <tbody>
+  {% for r in w.rows %}
+    <tr>
+      <td class="mono nowrap">{{ wd[r.exfty.weekday()] }} {{ r.exfty.strftime('%d/%m') }}</td>
+      <td><a class="mono" href="/shipments/{{ r.code }}">{{ r.jo or r.code }}</a></td>
+      <td class="mono">{{ r.no }}</td><td>{{ r.buyer }}</td>
+      <td class="right mono">{{ '{:,.0f}'.format(r.qty) if r.qty else '' }}</td>
+      <td>{{ r.mode }}</td><td class="mono">{{ r.container }}</td><td>{{ r.forwarder }}</td>
+      <td><span class="mini">{{ r.booking_status }}</span> <span class="mono">{{ r.booking_no }}</span></td>
+      <td>{{ r.assigned_to or '—' }}</td>
+      <td>{% for m in r.missing %}<span class="st OVERDUE">{{ m }}</span> {% else %}<span class="st OK">Đủ</span>{% endfor %}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="11" class="muted">Tuần sau chưa có lô nào</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

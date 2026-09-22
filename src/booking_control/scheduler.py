@@ -6,7 +6,8 @@ Khong co "Bot". Thay vao do la cac job co ten ro rang, moi lan chay deu ghi JobR
     followup_scan          Quet Follow Up -> trang thai -> deadline -> Planning/HS Code/MM/Lich xuat
     notification_dispatch  Phat cac thong bao bi don ngoai khung gio 08:00-16:00
     excel_write_retry      Ghi lai cac file dich bi khoa (Pending Queue)
-    outlook_scan           Doc mail booking/cancel tu Outlook (neu bat)
+    outlook_scan           Doc email Outlook desktop (Inbox + Sent) -> ghep lo -> cap nhat booking (neu bat)
+    weekly_planning_check  Nhac Weekly Planning tuan sau (thu 5, thu 6 08:00 / 11:00), bao tre sau 12:00 thu 6
     housekeeping           Don phien dang nhap het han, lich su job cu
 
 Lich quet Follow Up neo theo scan_anchor_hour: 09:00, 12:00, 15:00...
@@ -36,7 +37,8 @@ JOB_TITLES: dict[str, str] = {
     "followup_scan": "Quet Follow Up + trang thai + deadline + ghi Planning",
     "notification_dispatch": "Phat thong bao bi don ngoai khung gio",
     "excel_write_retry": "Ghi lai file dich dang bi khoa (Pending Queue)",
-    "outlook_scan": "Doc email booking tu Outlook",
+    "outlook_scan": "Doc email Outlook -> ghep lo -> cap nhat booking",
+    "weekly_planning_check": "Nhac chot Weekly Planning (han 12:00 thu 6)",
     "housekeeping": "Don phien dang nhap het han + lich su cu",
 }
 
@@ -88,6 +90,10 @@ class AutomationScheduler:
                             IntervalTrigger(minutes=30, timezone=self._tz), id="excel_write_retry", **opts)
         self._sched.add_job(lambda: self.run_job("housekeeping", self._housekeeping),
                             IntervalTrigger(hours=6, timezone=self._tz), id="housekeeping", **opts)
+        if self.settings.weekly_planning.enabled:
+            # moi 15 phut: kip moc 11:00 / 12:00 thu 6 (moi moc chi nhac 1 lan)
+            self._sched.add_job(lambda: self.run_job("weekly_planning_check", self._weekly_check),
+                                IntervalTrigger(minutes=15, timezone=self._tz), id="weekly_planning_check", **opts)
         if self.settings.outlook.enabled:
             self._sched.add_job(lambda: self.run_job("outlook_scan", self._outlook_scan),
                                 IntervalTrigger(minutes=self.settings.jobs.outlook_interval_minutes, timezone=self._tz),
@@ -124,6 +130,8 @@ class AutomationScheduler:
         for name, title in JOB_TITLES.items():
             job = self._sched.get_job(name) if self._sched.running else None
             if name == "outlook_scan" and not self.settings.outlook.enabled:
+                continue
+            if name == "weekly_planning_check" and not self.settings.weekly_planning.enabled:
                 continue
             out.append({"name": name, "title": title,
                         "next_run": getattr(job, "next_run_time", None) if job else None})
@@ -226,7 +234,13 @@ class AutomationScheduler:
     def _outlook_scan(self) -> dict[str, Any]:
         from .integrations.outlook import scan_outlook
 
-        return scan_outlook(self.settings) or {}
+        return scan_outlook(self.settings, self.engine) or {}
+
+    def _weekly_check(self) -> dict[str, Any]:
+        from .services.weekly_service import check_reminders
+
+        with session_scope() as s:
+            return check_reminders(s, self.settings)
 
     def _housekeeping(self) -> dict[str, Any]:
         cutoff = utcnow() - dt.timedelta(days=self.settings.jobs.keep_days)

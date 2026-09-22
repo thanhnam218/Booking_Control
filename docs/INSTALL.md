@@ -189,12 +189,63 @@ Mật khẩu SMTP (nếu có) đặt trong biến môi trường `BOOKINGCTL_SMT
 
 ---
 
+## 9b. Đọc email booking từ Outlook desktop
+
+Hệ thống đọc **Outlook desktop cài trên chính máy chủ** (không dùng Microsoft Graph, không cần quyền Azure). Yêu cầu:
+
+1. Máy chủ cài Outlook (Microsoft 365 / Outlook 2016+), đăng nhập hộp thư nhận email booking (hộp thư cá nhân hoặc hộp thư dùng chung, ví dụ `booking@company.com`).
+2. Outlook **đang mở** trong phiên Windows đang chạy Booking Control (cùng tài khoản Windows). Chạy nền bằng Task Scheduler thì chọn *Run only when user is logged on*.
+3. `pywin32` đã được `install.ps1` cài sẵn (kiểm tra: `.venv\Scripts\python -c "import win32com.client"`).
+
+Bật trong `config\config.yaml`:
+
+```yaml
+jobs:
+  outlook_interval_minutes: 30       # đọc mỗi 30 phút
+outlook:
+  enabled: true
+  mailbox: ""                        # để trống = hộp thư mặc định; hoặc "booking@company.com"
+  folders: ["Inbox", "Sent Items"]   # Sent Items: email yêu cầu booking mình gửi -> nhớ Conversation
+  lookback_days: 14                  # lần đầu đọc lùi 14 ngày, sau đó chỉ đọc email mới
+  auto_apply: true                   # false = mọi email vào hàng chờ duyệt
+```
+
+Thư mục con (ví dụ rule Outlook chuyển email forwarder vào `Inbox/Booking`) ghi `folders: ["Inbox/Booking", "Sent Items"]`.
+
+Chạy thử ngay: `.\scripts\run.bat outlook` → bảng email vừa đọc. Trên máy không có Outlook: `.\scripts\run.bat outlook --demo` nạp 5 email mẫu để xem hàng chờ duyệt.
+
+**Tinh chỉnh theo forwarder thật** — `config\email_profiles.yaml`:
+
+- `forwarders`: tên miền / địa chỉ gửi của từng forwarder (nhận diện forwarder + nhãn riêng của họ).
+- `field_aliases`: nhãn trong email / PDF (vd forwarder ghi "Sailing date:" thay cho "ETD:" → thêm `"sailing date"` vào `etd`).
+- `categories`: từ khóa phân loại (thêm tiếng Việt / tiếng Hàn nếu cần).
+- `thresholds` / `weights`: điểm tự ghép (mặc định ≥ 85 tự áp dụng, 60–84 chờ duyệt).
+
+File PDF đính kèm được đọc bằng `pdfplumber` (PDF có lớp chữ). PDF scan ảnh → báo `NO_TEXT`, email vẫn vào hàng chờ duyệt để người dùng xem.
+
+---
+
+## 9c. Thư mục chứng từ
+
+Mặc định chứng từ lưu ở `data\documents\Năm\Buyer\NO\LOẠI\`. Muốn lưu ở ổ mạng / NAS:
+
+```yaml
+documents:
+  root: "\\\\nas01\\logistics\\booking-docs"   # tài khoản Windows chạy dịch vụ phải có quyền ghi
+  max_upload_mb: 25
+```
+
+Loại chứng từ, chứng từ bắt buộc theo Mode / Buyer / Forwarder, hạn nộp và quy trình B1 → B15.1 nằm trong `config\workflow.yaml` (sửa file, khởi động lại là áp dụng; task chưa xong tự cập nhật theo cấu hình mới).
+
+---
+
 ## 10. Sao lưu
 
 | Cần sao lưu | Ở đâu | Gợi ý |
 |---|---|---|
 | Database | `data\booking_control.db` | copy hằng ngày sang ổ khác / NAS (dừng hệ thống hoặc copy lúc ít người dùng) |
-| Cấu hình | `config\config.yaml`, `config\buyer_rules.yaml` | copy mỗi khi sửa |
+| Cấu hình | `config\config.yaml`, `config\buyer_rules.yaml`, `config\email_profiles.yaml`, `config\workflow.yaml` | copy mỗi khi sửa |
+| Chứng từ + file đính kèm email | `data\documents\`, `data\mail\` (hoặc `documents.root`) | sao lưu cùng database |
 | Bản sao file Excel đích trước mỗi lần ghi | `data\backups\` | tự động, giữ 20 bản/file; khôi phục ở Quản trị › Backup |
 
 Chuyển sang SQL Server / PostgreSQL khi nhiều người dùng: đổi `database.url` (xem ví dụ trong `config.example.yaml`), cài driver (`pyodbc` hoặc `psycopg`), khởi động lại — bảng được tạo tự động.
@@ -211,7 +262,17 @@ Tạo `dist\BookingControl\` — copy cả thư mục sang máy chủ khác, s�
 
 ---
 
-## 12. Nâng cấp từ v1 (Booking Deadline Bot)
+## 12. Nâng cấp từ v2 lên v3
+
+1. Dừng hệ thống, **sao lưu `data\`** (database + backups).
+2. `git pull` (hoặc chép mã nguồn mới), rồi `.venv\Scripts\pip install -r requirements.txt` (thêm `pdfplumber`).
+3. Thêm vào `config\config.yaml` các mục mới từ `config.example.yaml`: `outlook` (dạng mới), `documents`, `weekly_planning`. Mục `outlook.booking_confirm_keywords` / `cancel_keywords` cũ không còn dùng — từ khóa nằm trong `config\email_profiles.yaml`.
+4. Khởi động lại: bảng mới (booking, email, chứng từ, task) và cột mới được tạo tự động. Lần quét đầu: mỗi số BOOKING NO có trong Follow Up thành một booking (cùng số trên nhiều lô → booking gộp), task B1 → B15.1 được sinh cho lô có EX-FACT từ 30 ngày trước đến 75 ngày tới.
+5. Tạo tài khoản Auditor nếu cần: `.\scripts\run.bat user add ten.ks --role auditor`.
+
+---
+
+## 13. Nâng cấp từ v1 (Booking Deadline Bot)
 
 1. Dừng bản cũ, gỡ task cũ: trong thư mục cũ chạy `.\scripts\install_autostart.ps1 -Remove`.
 2. Cài bản mới vào thư mục mới (mục 2–3). Copy `config\config.yaml` và `config\buyer_rules.yaml` cũ sang, rồi thêm các mục mới từ `config.example.yaml`: `assignment`, `auth`, `jobs`, `notification.email`, `web.host` (các mục `toast` / `popup` / `tray_balloon` cũ không còn dùng — xóa đi).
@@ -236,6 +297,10 @@ Tạo `dist\BookingControl\` — copy cả thư mục sang máy chủ khác, s�
 | Ô trên lưới báo *vừa được người khác cập nhật* | Hai người cùng sửa một dòng; dòng đã tải lại bản mới nhất, nhập lại nếu cần |
 | Cổng 8765 đang bị chiếm | Đổi `web.port`, ví dụ `8766` (và mở lại tường lửa với `-Port 8766`) |
 | `ModuleNotFoundError: booking_control` | Chạy sai Python — luôn dùng `scripts\run.bat` |
+| Job `outlook_scan` lỗi *Can Windows + Outlook desktop dang mo + pywin32* | Outlook chưa mở trong phiên Windows đang chạy hệ thống, hoặc chạy nền dưới tài khoản khác — mở Outlook, chạy Task Scheduler với *Run only when user is logged on* |
+| Outlook hỏi *A program is trying to access e-mail...* | Chính sách bảo mật Outlook: cài antivirus được Windows Security nhận diện, hoặc nhờ IT cho phép truy cập lập trình (Trust Center › Programmatic Access) |
+| Email booking luôn vào *Chưa ghép* | Email không có JO / INVOICE / Booking No trùng dữ liệu: ghép tay một lần (hệ thống nhớ Conversation) hoặc thêm nhãn vào `email_profiles.yaml` |
+| PDF đính kèm báo `NO_TEXT` | PDF scan ảnh, không có lớp chữ — xem file đính kèm và nhập tay |
 
 ---
 

@@ -29,6 +29,9 @@ EX_CODES = {
     "EX015": "Excel khac gia tri User/Quan ly da sua tren web (giu gia tri web)",
     "EX016": "Nguoi dung sua truong can Quan ly xem lai",
     "EX017": "Forwarder can xac nhan (nhieu rule khop / xung dot voi email)",
+    "EX018": "Booking chua phan bo du so luong lo (split booking)",
+    "EX019": "BOOKING NO doi trong Excel / luoi - can xac nhan rebook",
+    "EX020": "Email bao thay doi o User da chot tay (giu gia tri User)",
 }
 
 

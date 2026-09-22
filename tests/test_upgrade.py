@@ -32,3 +32,29 @@ def test_v1_database_is_upgraded_in_place(tmp_path):
         # Cot moi co gia tri mac dinh -> dong cu khong bi loc mat
         assert sh.archived is False and sh.assigned_to == "" and sh.version == 1 and sh.row_data == {}
         assert s.execute(select(Shipment).where(Shipment.archived.is_(False))).scalar_one()
+
+
+def test_v2_database_gets_v3_tables_columns_and_indexes(tmp_path):
+    """v2 -> v3: bang booking / email / chung tu / task + cot booking_status / hold_status / ship_status."""
+    db = tmp_path / "v2.db"
+    con = sqlite3.connect(db)
+    con.execute("""CREATE TABLE shipments (
+        id INTEGER PRIMARY KEY, shipment_code VARCHAR(40) NOT NULL, shipment_key VARCHAR(64) NOT NULL,
+        source_file_code VARCHAR(40) NOT NULL, source_sheet VARCHAR(160) NOT NULL, source_row INTEGER NOT NULL,
+        auto_status VARCHAR(20) NOT NULL, effective_status VARCHAR(20) NOT NULL, jo VARCHAR(40))""")
+    con.execute("INSERT INTO shipments VALUES (1,'SHP-1','k1','F01','S',2,'YELLOW','YELLOW','JO-1')")
+    con.commit()
+    con.close()
+
+    eng = init_engine(f"sqlite:///{db}")
+    insp = inspect(eng)
+    tables = set(insp.get_table_names())
+    assert {"bookings", "booking_shipments", "shipment_executions", "shipment_events", "emails",
+            "email_attachments", "conversation_links", "documents", "document_versions",
+            "workflow_tasks"} <= tables
+    cols = {c["name"] for c in insp.get_columns("shipments")}
+    assert {"booking_status", "hold_status", "ship_status"} <= cols
+    assert {"ix_shipment_jo", "ix_shipment_booking"} <= {i["name"] for i in insp.get_indexes("shipments")}
+    with session_scope() as s:
+        sh = s.execute(select(Shipment)).scalar_one()
+        assert (sh.booking_status, sh.hold_status, sh.ship_status) == ("NOT_BOOKED", "NO_HOLD", "NOT_SHIPPED")

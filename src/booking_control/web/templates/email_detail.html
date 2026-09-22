@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{{ e.subject or '(không tiêu đề)' }}</h2>
+<p class="page-sub">{{ '↗ Mình gửi' if e.direction=='OUT' else '↘ Nhận' }} {{ e.received.strftime('%d/%m/%Y %H:%M') if e.received else '' }}
+  &middot; {{ e.sender }}{% if e.forwarder %} ({{ e.forwarder }}){% endif %} &middot; thư mục {{ e.folder }}
+  &middot; loại <b>{{ cat_labels.get(e.category, e.category) }}</b> &middot; điểm {{ e.score }}
+  &middot; <span class="st {{ e.status }}">{{ e.status }}</span>
+  {% if e.applied_by %}&middot; {{ e.applied_by }} {{ e.applied_at.strftime('%d/%m %H:%M') if e.applied_at else '' }}{% endif %}
+  {% if e.booking %}&middot; booking <a href="/bookings/{{ e.booking.id }}">{{ e.booking.label }}</a> ({{ e.booking.status }}){% endif %}</p>
+{% if msg %}<div class="flash ok">{{ msg }}</div>{% endif %}
+{% if err %}<div class="flash err">{{ err }}</div>{% endif %}
+{% if e.conflicts %}<div class="flash warn">Nội dung email và file PDF đính kèm báo khác nhau ở: {{ e.conflicts.keys()|join(', ') }}.
+  Hệ thống không tự chọn - hãy chọn giá trị đúng bên dưới.</div>{% endif %}
+
+<form method="post" action="/emails/{{ e.id }}/apply">
+<input type="hidden" name="_csrf" value="{{ csrf }}">
+<div class="two">
+  <div class="card">
+    <h3>Thông tin đọc được</h3>
+    <table>
+      <thead><tr><th>Trường</th><th>Trong email</th><th>Trong PDF</th>{% if e.conflicts and can_review %}<th>Chọn</th>{% endif %}</tr></thead>
+      <tbody>
+      {% for f in fields %}
+        <tr class="{{ 'conflict' if f.conflict }}"><td class="muted">{{ f.label }}</td><td class="mono">{{ f.email }}</td><td class="mono">{{ f.pdf }}</td>
+          {% if e.conflicts and can_review %}<td>{% if f.conflict %}
+            <label class="nowrap"><input type="radio" name="choice_{{ f.key }}" value="email"> email</label>
+            <label class="nowrap"><input type="radio" name="choice_{{ f.key }}" value="pdf"> PDF</label>{% endif %}</td>{% endif %}</tr>
+      {% else %}<tr><td class="muted" colspan="3">Không đọc được trường nào (Booking No, ETD, Vessel...)</td></tr>{% endfor %}
+      </tbody>
+    </table>
+    {% if atts %}
+    <p style="margin-top:10px" class="mini">Đính kèm:
+      {% for a in atts %}<a href="/emails/{{ e.id }}/files/{{ a.id }}">{{ a.name }}</a>
+        <span class="st {{ 'OK' if a.status=='OK' else ('MISSING' if a.status=='SKIPPED' else 'REVIEW') }}" title="{{ a.error }}">{{ a.status }}</span>{{ ' · ' if not loop.last }}{% endfor %}</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h3>Lô hàng gợi ý</h3>
+    <table>
+      <thead><tr><th></th><th>JO</th><th>EX-FACT</th><th class="right">Điểm</th><th>Lý do</th></tr></thead>
+      <tbody>
+      {% for c in cands %}
+        <tr><td>{% if can_review %}<input type="checkbox" name="code" value="{{ c.code }}" {{ 'checked' if c.checked }}>{% endif %}</td>
+          <td><a class="mono" href="/shipments/{{ c.code }}">{{ c.jo }}</a><div class="mini muted">{{ c.buyer }} · {{ c.owner or 'chưa giao' }}{% if c.booking_no %} · {{ c.booking_no }}{% endif %}</div></td>
+          <td class="mono">{{ c.exfty.strftime('%d/%m') if c.exfty else '' }}</td>
+          <td class="right mono">{{ c.score if c.score is not none else '' }}</td>
+          <td class="reasons">{{ c.reasons|join('; ') }}</td></tr>
+      {% else %}<tr><td colspan="5" class="muted">Không tìm được lô nào trùng mã JO / GO / PO / Invoice / Booking No</td></tr>{% endfor %}
+      </tbody>
+    </table>
+    {% if can_review %}
+    <datalist id="ships">{% for o in options %}<option value="{{ o.code }}">{{ o.label }}</option>{% endfor %}</datalist>
+    <div class="fields" style="margin-top:12px">
+      <label>Thêm lô khác<input name="extra_code" list="ships" placeholder="gõ JO để tìm"></label>
+      <label>Loại email
+        <select name="category">{% for c in categories %}<option value="{{ c }}" {{ 'selected' if c==e.category }}>{{ cat_labels.get(c, c) }}</option>{% endfor %}</select></label>
+    </div>
+    <p style="margin-top:12px"><button type="submit">Áp dụng vào lô đã chọn</button>
+      <span class="mini muted">Hệ thống ghi nhớ Conversation: email trả lời sau sẽ tự ghép.</span></p>
+    {% endif %}
+  </div>
+</div>
+</form>
+
+{% if can_review %}
+<form method="post" action="/emails/{{ e.id }}/ignore" style="margin-bottom:16px">
+  <input type="hidden" name="_csrf" value="{{ csrf }}">
+  <button class="ghost" type="submit">Bỏ qua email này (không liên quan booking)</button>
+</form>
+{% endif %}
+
+<div class="two">
+  <div class="card">
+    <h3>Nội dung (trích)</h3>
+    <div class="mail-body mono">{{ e.body }}</div>
+  </div>
+  <div class="card">
+    <h3>Cùng hội thoại</h3>
+    <table><tbody>
+    {% for x in thread %}
+      <tr><td class="mono nowrap">{{ x.received.strftime('%d/%m %H:%M') if x.received else '' }}</td>
+        <td>{{ '↗' if x.direction=='OUT' else '↘' }} <a href="/emails/{{ x.id }}">{{ x.subject }}</a></td>
+        <td class="mini">{{ cat_labels.get(x.category, x.category) }}</td><td><span class="st {{ x.status }}">{{ x.status }}</span></td></tr>
+    {% else %}<tr><td class="muted">Email đầu tiên của hội thoại</td></tr>{% endfor %}
+    </tbody></table>
+    <p class="mini muted">Người nhận: {{ e.recipients }}</p>
+  </div>
+</div>
+{% endblock %}

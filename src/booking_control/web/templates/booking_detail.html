@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Booking {{ b.label }} <span class="bk {{ b.status }}">{{ labels.get(b.status, b.status) }}</span></h2>
+<p class="page-sub">#{{ b.id }} &middot; nguồn {{ b.source }} &middot; tạo bởi {{ b.created_by or '—' }}
+  &middot; phiên bản {{ b.version }}
+  {% if b.conversation_id %}&middot; đã gắn email Outlook (Conversation){% endif %}
+  {% if b.original_booking_id %}&middot; rebook từ <a href="/bookings/{{ b.original_booking_id }}">#{{ b.original_booking_id }}</a>{% endif %}
+  {% if b.replacement_booking_id %}&middot; đã được thay bằng <a href="/bookings/{{ b.replacement_booking_id }}">#{{ b.replacement_booking_id }}</a>{% endif %}</p>
+{% if msg %}<div class="flash ok">{{ msg }}</div>{% endif %}
+{% if err %}<div class="flash err">{{ err }}</div>{% endif %}
+{% if b.status == 'ON_HOLD' %}<div class="flash warn">Đang HOLD: {{ b.hold_reason or 'không ghi lý do' }}{% if b.hold_review_date %} &middot; xem lại ngày {{ b.hold_review_date.strftime('%d/%m') }}{% endif %}</div>{% endif %}
+{% if b.status == 'CANCELLED' and not b.replacement_booking_id %}<div class="flash err">Booking đã hủy{% if b.cancel_reason %}: {{ b.cancel_reason }}{% endif %} - cần rebook hoặc gộp lô sang booking khác.</div>{% endif %}
+
+{% if can_edit and actions %}
+<div class="card">
+  <h3>Chuyển trạng thái</h3>
+  <form class="inline" method="post" action="/bookings/{{ b.id }}/status">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <select name="new_status">{% for st, label in actions %}<option value="{{ st }}">{{ label }}</option>{% endfor %}</select>
+    <input name="reason" placeholder="Lý do (bắt buộc khi Hủy / Hold)" size="40">
+    <button type="submit">Cập nhật</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="two">
+  <div class="card">
+    <h3>Thông tin booking</h3>
+    {% if can_edit and b.status not in ['CANCELLED','REBOOKED'] %}
+    <form method="post" action="/bookings/{{ b.id }}/update">
+      <input type="hidden" name="_csrf" value="{{ csrf }}">
+      <input type="hidden" name="version" value="{{ b.version }}">
+      <div class="fields">
+        <label>Booking No<input name="booking_no" value="{{ b.booking_no or '' }}"></label>
+        <label>Forwarder<input name="forwarder" value="{{ b.forwarder or '' }}"></label>
+        <label>Mode<input name="mode" value="{{ b.mode or '' }}"></label>
+        <label>Container<input name="container_plan" value="{{ b.container_plan or '' }}"></label>
+        <label>Vessel<input name="vessel" value="{{ b.vessel or '' }}"></label>
+        <label>Voyage<input name="voyage" value="{{ b.voyage or '' }}"></label>
+        <label>ETD<input type="date" name="etd" value="{{ b.etd or '' }}"></label>
+        <label>ETA<input type="date" name="eta" value="{{ b.eta or '' }}"></label>
+        <label>Ngày booking<input type="date" name="booking_date" value="{{ b.booking_date or '' }}"></label>
+        <label>CY cut-off<input name="cy_cutoff" value="{{ b.cy_cutoff or '' }}"></label>
+        <label>SI/VGM cut-off<input name="si_vgm_cutoff" value="{{ b.si_vgm_cutoff or '' }}"></label>
+        <label>Closing<input name="closing_time" value="{{ b.closing_time or '' }}"></label>
+        <label>Port<input name="port" value="{{ b.port or '' }}"></label>
+        <label>Ghi chú<input name="remark" value="{{ b.remark or '' }}"></label>
+      </div>
+      <p style="margin-top:12px"><button type="submit">Lưu</button>
+        <span class="muted mini">Booking No / ETD / ETA / Vessel / Closing tự ghi sang các lô trên lưới Follow Up.</span></p>
+    </form>
+    {% else %}
+    <dl class="kv">
+      <dt>Booking No</dt><dd class="mono">{{ b.booking_no or '—' }}</dd>
+      <dt>Forwarder</dt><dd>{{ b.forwarder or '—' }} {{ b.mode or '' }}</dd>
+      <dt>Container</dt><dd>{{ b.container_plan or '—' }}</dd>
+      <dt>Vessel / Voy</dt><dd class="mono">{{ b.vessel or '—' }} {{ b.voyage or '' }}</dd>
+      <dt>ETD / ETA</dt><dd class="mono">{{ b.etd.strftime('%d/%m/%Y') if b.etd else '—' }} / {{ b.eta.strftime('%d/%m/%Y') if b.eta else '—' }}</dd>
+      <dt>CY / SI-VGM / Closing</dt><dd class="mono">{{ b.cy_cutoff or '—' }} / {{ b.si_vgm_cutoff or '—' }} / {{ b.closing_time or '—' }}</dd>
+      <dt>Port</dt><dd>{{ b.port or '—' }}</dd>
+      <dt>Ghi chú</dt><dd>{{ b.remark or '' }}</dd>
+    </dl>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h3>Lô hàng trong booking</h3>
+    <table>
+      <thead><tr><th>JO</th><th>Buyer</th><th class="right">SL lô</th><th class="right">Phân bổ</th><th>Đủ?</th><th class="right">Đã xuất</th><th></th></tr></thead>
+      <tbody>
+      {% for x in b.shipments %}
+        <tr><td><a class="mono" href="/shipments/{{ x.code }}">{{ x.jo }}</a><div class="mini muted">{{ x.owner or 'chưa giao' }}</div></td>
+          <td>{{ x.buyer }}</td>
+          <td class="right mono">{{ '{:,.0f}'.format(x.ship_qty) if x.ship_qty else '' }}</td>
+          <td class="right mono">{{ '{:,.0f}'.format(x.qty) if x.qty is not none else 'cả lô' }}</td>
+          <td>{% if x.allocation %}<span class="st {{ x.allocation }}" title="tổng các booking đang hiệu lực của lô">{{ x.allocation }}{% if x.missing %} thiếu {{ '{:,.0f}'.format(x.missing) }}{% endif %}</span>{% endif %}</td>
+          <td class="right mono">{{ '{:,.0f}'.format(x.shipped) if x.shipped else '' }}</td>
+          <td>{% if can_edit and b.shipments|length > 1 %}
+            <form method="post" action="/bookings/{{ b.id }}/unlink" onsubmit="return confirm('Bỏ lô {{ x.jo }} khỏi booking?')">
+              <input type="hidden" name="_csrf" value="{{ csrf }}"><input type="hidden" name="code" value="{{ x.code }}">
+              <button class="ghost btn-sm" type="submit">Bỏ</button></form>{% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% if can_edit and b.status not in ['CANCELLED','REBOOKED'] %}
+    <datalist id="ships">{% for o in options %}<option value="{{ o.code }}">{{ o.label }}</option>{% endfor %}</datalist>
+    <form class="inline" method="post" action="/bookings/{{ b.id }}/link" style="margin-top:10px">
+      <input type="hidden" name="_csrf" value="{{ csrf }}">
+      <input name="code" list="ships" placeholder="Thêm lô / đổi số lượng: mã lô" size="26" required>
+      <input name="qty" placeholder="SL (trống = cả lô)" size="12">
+      <button class="ghost" type="submit">Thêm / cập nhật</button>
+    </form>
+    {% endif %}
+    {% if chain %}<p class="muted mini" style="margin-top:10px">Chuỗi rebook: {% for c in chain %}<a href="/bookings/{{ c.id }}">{{ c.label }}</a> ({{ c.status }}){{ ' ← ' if not loop.last }}{% endfor %}</p>{% endif %}
+  </div>
+</div>
+
+{% if can_cancel and b.status not in ['REBOOKED'] and not b.replacement_booking_id %}
+<details class="box card">
+  <summary>Rebook (tạo booking mới thay booking này - booking cũ chuyển Đã hủy, giữ lịch sử)</summary>
+  <form method="post" action="/bookings/{{ b.id }}/rebook" style="margin-top:10px">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <div class="fields">
+      <label>Booking No mới<input name="booking_no"></label>
+      <label>Vessel<input name="vessel"></label>
+      <label>Voyage<input name="voyage"></label>
+      <label>ETD<input type="date" name="etd"></label>
+      <label>ETA<input type="date" name="eta"></label>
+      <label>CY cut-off<input name="cy_cutoff"></label>
+      <label>Lý do<input name="reason" placeholder="vd hãng tàu rớt chỗ"></label>
+    </div>
+    <p style="margin-top:10px"><button type="submit">Rebook</button></p>
+  </form>
+</details>
+{% endif %}
+
+<div class="two">
+  <div class="card">
+    <h3>Email liên quan</h3>
+    <table><tbody>
+    {% for e in emails %}
+      <tr><td class="mono nowrap">{{ e.received.strftime('%d/%m %H:%M') if e.received else '' }}</td>
+        <td>{{ '↗' if e.direction=='OUT' else '↘' }} <a href="/emails/{{ e.id }}">{{ e.subject }}</a></td>
+        <td class="mini">{{ e.category }}</td><td><span class="st {{ e.status }}">{{ e.status }}</span></td></tr>
+    {% else %}<tr><td class="muted">Chưa có email</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+  <div class="card">
+    <h3>Xuất hàng thực tế</h3>
+    <table><tbody>
+    {% for x in execs %}
+      <tr><td class="mono">{{ x.date.strftime('%d/%m/%Y') }}</td><td><a href="/shipments/{{ x.code }}">{{ x.code }}</a></td>
+        <td class="right mono">{{ '{:,.0f}'.format(x.qty) }}</td><td class="mono">{{ x.cont }} {{ x.seal }}</td><td class="muted">{{ x.by }}</td></tr>
+    {% else %}<tr><td class="muted">Chưa ghi nhận - ghi ở trang lô hàng (mục Xuất hàng)</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+</div>
+
+<div class="card scroll-x">
+  <h3>Lịch sử booking</h3>
+  <table>
+    <thead><tr><th>Lúc</th><th>Sự kiện</th><th>Lô</th><th>Cũ</th><th>Mới</th><th>Nguồn</th><th>Ghi chú</th></tr></thead>
+    <tbody>
+    {% for e in events %}
+      <tr><td class="mono nowrap">{{ e.ts.strftime('%d/%m %H:%M') }}</td><td>{{ e.type }}</td><td class="mono mini">{{ e.code }}</td>
+        <td class="mono">{{ e.old }}</td><td class="mono">{{ e.new }}</td>
+        <td>{{ e.source }}{% if e.actor %} · {{ e.actor }}{% endif %}{% if e.email_id %} · <a href="/emails/{{ e.email_id }}">email</a>{% endif %}</td>
+        <td class="muted">{{ e.note }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

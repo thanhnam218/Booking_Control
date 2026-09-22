@@ -75,6 +75,9 @@ def workspace(tmp_path, field_mapping_cfg, buyer_cfg, today) -> Settings:
     raw["buyer_rules"] = buyer_cfg
     raw["followup_template"] = yaml.safe_load(
         (ROOT / "config" / "followup_template.yaml").read_text(encoding="utf-8"))
+    raw["email_profiles"] = _yaml("email_profiles.yaml")
+    raw["workflow"] = _yaml("workflow.yaml")
+    raw["outlook"]["enabled"] = False
     raw["config_path"] = "test"
     return Settings(**raw)
 

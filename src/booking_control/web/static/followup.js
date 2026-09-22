@@ -190,7 +190,20 @@
       rowsByCode = {};
       d.rows.forEach(function (r) { rowsByCode[r.code] = r; });
       build(d.rows.map(toGridRow));
-      countEl.textContent = d.rows.length + " dòng" + (d.truncated ? " (đã giới hạn " + d.limit + " — hãy lọc bớt)" : "");
+      countEl.textContent = d.rows.length + " dòng";
+      if (d.pages > 1) {  // phan trang phia may chu
+        countEl.textContent = "Trang " + d.page + "/" + d.pages + " · " + d.rows.length + "/" + d.total + " dòng ";
+        [[d.page - 1, "‹ Trước"], [d.page + 1, "Sau ›"]].forEach(function (pg) {
+          if (pg[0] < 1 || pg[0] > d.pages) return;
+          var q = new URLSearchParams(location.search);
+          q.set("page", pg[0]);
+          var a = document.createElement("a");
+          a.href = "?" + q.toString();
+          a.textContent = pg[1];
+          a.style.marginLeft = "8px";
+          countEl.appendChild(a);
+        });
+      }
       setState("Sẵn sàng");
     }).catch(function (e) { setState("Lỗi tải: " + e.message, "err"); });
   }

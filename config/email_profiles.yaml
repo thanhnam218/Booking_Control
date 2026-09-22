@@ -1,0 +1,83 @@
+# =============================================================================
+# EMAIL OUTLOOK - PHAN LOAI, TRICH XUAT, GHEP LO (SRSv5 muc 19-27)
+# =============================================================================
+# He thong doc Outlook desktop tren may chu (Inbox + Sent Items), roi:
+#   1. Phan loai email theo tu khoa (thu tu duoi day = do uu tien)
+#   2. Trich xuat truong tu than email VA file PDF dinh kem (dong "Nhan: gia tri")
+#   3. Tim lo hang bang ma co that trong database (JO, GO, PO, INVOICE, NO, Booking No)
+#      + Conversation / Reply cua email truoc -> cham diem
+#   4. >= auto: tu ap dung | review..auto: cho nguoi duyet | < review: chua ghep
+#   Email va PDF bao khac nhau (vd ETD) -> CONFLICT, KHONG tu chon (BR-006)
+# =============================================================================
+
+version: 1
+
+thresholds:
+  auto: 85          # >= 85 diem -> tu ghep (SRSv5 muc 27)
+  review: 60        # 60..84 -> hang cho duyet; < 60 -> chua ghep
+  margin: 10        # 2 lo cach nhau < 10 diem -> khong tu chon (BR-007)
+
+weights:            # diem cho moi dau hieu trung (hieu chinh theo du lieu that)
+  conversation: 70  # cung Conversation voi email da ghep / email yeu cau booking (BR-003)
+  reply_to: 35      # tra loi (In-Reply-To) email da ghep
+  booking_no: 70    # Booking No da co trong he thong
+  jo: 45
+  invoice: 35       # INVOICE / NO (vd TEGV03001)
+  go: 25
+  po: 20
+  buyer: 5          # 4 dau hieu duoi chi cong them khi da co it nhat 1 dau hieu tren
+  etd: 10
+  vessel: 5
+  destination: 5
+  forwarder: 10     # email den tu dung Forwarder cua lo (forwarders: ben duoi)
+# Vi du: Conversation + Reply = 105 -> tu ghep; Booking No + ETD + dung Forwarder = 90 -> tu ghep;
+#        JO + INVOICE = 80 -> cho duyet; chi co JO = 45 -> chua ghep (nguoi dung chon lo).
+
+# Chi tim lo hang co EX-FACT trong khoang nay quanh ngay nhan email
+candidate_window_days: [-90, 150]
+
+# Phan loai: email chua mot trong cac tu khoa (tieu de hoac noi dung) -> loai do.
+# Thu tu tu tren xuong: CANCEL duoc xet truoc BOOKING_CONFIRMATION...
+categories:
+  CANCEL: ["booking cancel", "cancel booking", "cancellation", "booking cancelled", "huy booking", "hủy booking"]
+  RELEASE_HOLD: ["release hold", "hold released", "unhold", "giai toa hold", "giải tỏa hold"]
+  HOLD: ["on hold", "hold shipment", "hold booking", "please hold", "tam hoan", "tạm hoãn"]
+  REBOOK: ["rebook", "re-book", "rebooked", "new booking replace"]
+  DELAY: ["delay", "delayed", "roll over", "rollover", "rolled"]
+  AMENDMENT: ["amendment", "amended", "revised booking", "etd change", "change etd", "vessel change",
+              "change of vessel", "cut off change", "closing change"]
+  BOOKING_CONFIRMATION: ["booking confirmation", "booking confirmed", "booking confirm", "bkg confirm",
+                         "confirm booking", "shipping order", "s/o no"]
+  BOOKING_REQUEST: ["booking request", "request booking", "pls book", "please book", "kindly book",
+                    "yeu cau booking", "yêu cầu booking", "dat booking", "đặt booking"]
+
+# Nhan truong -> truong chuan (khong phan biet hoa thuong, bo dau va ky tu dac biet)
+field_aliases:
+  booking_no: ["booking no", "booking number", "booking ref", "bkg no", "bkg#", "booking#", "b/n", "so booking",
+               "s/o no", "so no"]
+  vessel: ["vessel", "vsl", "vessel/voyage", "vessel voyage", "vsl/voy", "mother vessel", "flight"]
+  voyage: ["voyage", "voy"]
+  etd: ["etd", "etd pol", "sailing date", "departure date", "etd date"]
+  eta: ["eta", "eta pod", "arrival date"]
+  cy_cutoff: ["cy cutoff", "cy cut off", "cy cot", "cy closing", "closing cy", "cy close"]
+  si_vgm_cutoff: ["si vgm", "si.vgm", "si/vgm", "si cutoff", "si cut off", "vgm cutoff", "doc cutoff", "si/vgm cut off"]
+  closing_time: ["closing time", "cargo closing", "cargo cut off", "cut off time", "cfs closing"]
+  port: ["pol", "port of loading", "port/wh", "warehouse", "cfs", "pickup"]
+  containers: ["container", "equipment", "cont type", "qty/type", "container type", "volume"]
+  forwarder: ["forwarder", "carrier", "shipping line"]
+
+# Forwarder: nhan dien theo dia chi / ten mien nguoi gui. Moi forwarder co the them alias rieng
+# (nhieu nhan vien, moi nguoi 1 kieu viet - SRSv5 muc 25-26). Ten duoi day la vi du.
+forwarders:
+  - name: "FWD-OCEAN-1"
+    domains: ["fwd-ocean1.example.com"]
+    field_aliases:
+      cy_cutoff: ["cy closing date/time"]
+  - name: "FWD-AIR-1"
+    domains: ["fwd-air1.example.com"]
+  - name: "FWD-KR-1"
+    domains: ["fwd-kr1.example.com"]
+    senders: ["booking.kr@fwd-kr1.example.com"]
+
+# Email noi bo (Sent Items) gui yeu cau booking -> tao booking REQUESTED + ghi nho Conversation
+internal_domains: ["company.com"]

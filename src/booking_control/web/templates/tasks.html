@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Việc của tôi</h2>
+<p class="page-sub">Task theo quy trình B1–B15.1 (config/workflow.yaml). Task <b>BLOCKED</b> khi bước trước chưa xong;
+  không bấm Hoàn thành được nếu còn thiếu chứng từ bắt buộc.</p>
+{% if msg %}<div class="flash ok">{{ msg }}</div>{% endif %}
+{% if err %}<div class="flash err">{{ err }}</div>{% endif %}
+
+<div class="grid tiles" style="margin-bottom:14px">
+  <div class="tile" style="border-left-color:var(--red)"><div class="n">{{ counts.OVERDUE }}</div><div class="l">Quá hạn</div></div>
+  <div class="tile" style="border-left-color:var(--partial)"><div class="n">{{ counts.TODAY }}</div><div class="l">Đến hạn hôm nay</div></div>
+  <div class="tile"><div class="n">{{ counts.BLOCKED }}</div><div class="l">Chờ bước trước</div></div>
+  <div class="tile" style="border-left-color:var(--accent)"><div class="n">{{ rows|length }}</div><div class="l">Đang hiển thị</div></div>
+</div>
+
+<form class="toolbar" method="get" action="/tasks">
+  {% if users %}
+  <select name="owner"><option value="__all__" {{ 'selected' if f.owner=='__all__' }}>Mọi người</option>
+    {% for u in users %}<option {{ 'selected' if f.owner==u }}>{{ u }}</option>{% endfor %}</select>
+  {% endif %}
+  <select name="show">
+    <option value="open" {{ 'selected' if f.show=='open' }}>Chưa xong</option>
+    <option value="overdue" {{ 'selected' if f.show=='overdue' }}>Quá hạn</option>
+    <option value="done" {{ 'selected' if f.show=='done' }}>Đã xong</option>
+    <option value="all" {{ 'selected' if f.show=='all' }}>Tất cả</option>
+  </select>
+  <select name="days">{% for d in [3, 7, 14, 30, 90] %}<option value="{{ d }}" {{ 'selected' if f.days==d }}>hạn trong {{ d }} ngày</option>{% endfor %}</select>
+  <input name="q" value="{{ f.q }}" placeholder="JO / NO / mã bước (B4)">
+  <button type="submit">Lọc</button>
+</form>
+
+<div class="card scroll-x">
+<table>
+  <thead><tr><th>Hạn</th><th>Bước</th><th>Lô</th><th>Trạng thái</th><th>Thiếu chứng từ</th><th>Phụ trách</th><th></th></tr></thead>
+  <tbody>
+  {% for t in rows %}
+    <tr>
+      <td class="mono nowrap {{ 'late' if t.display=='OVERDUE' else ('soon' if t.days_left is not none and t.days_left <= 1 and t.status not in ['COMPLETED','SKIPPED','CANCELLED'] else '') }}">
+        {{ t.due.strftime('%d/%m') if t.due else '—' }}{% if t.days_left is not none and t.display not in ['COMPLETED','SKIPPED','CANCELLED'] %}
+        <span class="mini">({{ t.days_left }}d)</span>{% endif %}</td>
+      <td><b class="mono">{{ t.step }}</b> {{ t.name }}{% if t.deps %}<div class="mini muted">sau {{ t.deps|join(', ') }}</div>{% endif %}</td>
+      <td><a class="mono" href="/shipments/{{ t.code }}">{{ t.jo }}</a><div class="mini muted">{{ t.buyer }} · {{ t.exfty.strftime('%d/%m') if t.exfty else '' }}</div></td>
+      <td><span class="st {{ t.display }}">{{ t.display }}</span>
+        {% if t.completed_by %}<div class="mini muted">{{ t.completed_by }}</div>{% endif %}</td>
+      <td class="mini">{% for d in t.missing_docs %}<span class="st MISSING">{{ d }}</span> {% endfor %}</td>
+      <td>{{ t.owner or '—' }}</td>
+      <td class="nowrap">{% if t.can %}
+        <form class="inline" method="post" action="/tasks/{{ t.id }}/status">
+          <input type="hidden" name="_csrf" value="{{ csrf }}"><input type="hidden" name="back" value="{{ request.url.path }}?{{ request.url.query }}">
+          {% if t.status in ['COMPLETED','SKIPPED','CANCELLED'] %}
+            <button class="ghost btn-sm" name="status" value="PENDING">Mở lại</button>
+          {% else %}
+            {% if t.status == 'PENDING' %}<button class="ghost btn-sm" name="status" value="IN_PROGRESS">Bắt đầu</button>{% endif %}
+            <button class="btn-sm" name="status" value="COMPLETED" {% if t.display=='BLOCKED' %}disabled title="Chờ bước trước xong"{% endif %}>Xong</button>
+            <button class="ghost btn-sm" name="status" value="SKIPPED">Bỏ qua</button>
+          {% endif %}
+        </form>{% endif %}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="muted">Không có task</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

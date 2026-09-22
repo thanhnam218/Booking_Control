@@ -7,8 +7,14 @@
   &middot; nguồn: {{ sh.source }} &middot; phiên bản {{ sh.version }}
   {% if sh.updated_by %}&middot; sửa lần cuối: {{ sh.updated_by }} {{ sh.updated_at.strftime('%d/%m %H:%M') if sh.updated_at else '' }}{% endif %}</p>
 
+{% if msg %}<div class="flash ok">{{ msg }}</div>{% endif %}
+{% if err %}<div class="flash err">{{ err }}</div>{% endif %}
 <div class="toolbar">
   <a class="btn" href="/followup?q={{ sh.jo }}">Sửa trên lưới Follow Up</a>
+  {% if v3.can_booking %}<a class="btn ghost" href="/bookings/new?code={{ sh.code }}">+ Tạo booking cho lô này</a>{% endif %}
+  <span class="muted mini">Booking: <b>{{ v3.summary.booking_status }}</b>
+    {% if v3.summary.allocation in ['PARTIAL','OVER'] %}<span class="st {{ v3.summary.allocation }}">phân bổ {{ '{:,.0f}'.format(v3.summary.allocated_qty or 0) }}{% if v3.summary.missing_qty %}, thiếu {{ '{:,.0f}'.format(v3.summary.missing_qty) }}{% endif %}</span>{% endif %}
+    &middot; Hold: <b>{{ sh.hold_status }}</b> &middot; Xuất: <b>{{ sh.ship_status }}</b></span>
   {% if me.can('shipments.archive') %}
   <form method="post" action="/shipments/{{ sh.code }}/archive">
     <input type="hidden" name="archived" value="{{ 'no' if sh.archived else 'yes' }}">
@@ -94,6 +100,121 @@
     {% if milestones %}
     <dl class="kv">{% for k, v in milestones.items() %}<dt>{{ k }}</dt><dd class="mono">{{ v }}</dd>{% endfor %}</dl>
     {% else %}<p class="muted">Chưa có EX-FACT DATE</p>{% endif %}
+  </div>
+</div>
+
+<div class="two">
+  <div class="card" id="booking">
+    <h3>Booking của lô</h3>
+    <table>
+      <thead><tr><th>Booking</th><th>Trạng thái</th><th class="right">Phân bổ</th><th>ETD</th><th>Vessel</th><th>Nguồn</th></tr></thead>
+      <tbody>
+      {% for b in v3.bookings %}
+        <tr><td><a class="mono" href="/bookings/{{ b.id }}">{{ b.label }}</a>{% if b.replacement %} <span class="mini muted">→ #{{ b.replacement }}</span>{% endif %}</td>
+          <td><span class="bk {{ b.status }}">{{ b.status_label }}</span></td>
+          <td class="right mono">{{ '{:,.0f}'.format(b.qty) if b.qty is not none else 'cả lô' }}</td>
+          <td class="mono">{{ b.etd.strftime('%d/%m') if b.etd else '' }}</td><td class="mono">{{ b.vessel or '' }}</td>
+          <td><span class="tag">{{ b.source }}</span></td></tr>
+      {% else %}<tr><td colspan="6" class="muted">Chưa có booking</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card" id="xuat-hang">
+    <h3>Xuất hàng thực tế {% if sh.ship_status != 'NOT_SHIPPED' %}<span class="st {{ 'OK' if sh.ship_status=='FULLY_SHIPPED' else 'PARTIAL' }}">{{ sh.ship_status }}</span>{% endif %}</h3>
+    <table><tbody>
+    {% for x in v3.execs %}
+      <tr><td class="mono">{{ x.date.strftime('%d/%m/%Y') }}</td><td class="right mono">{{ '{:,.0f}'.format(x.qty) }}</td>
+        <td class="mono">{{ x.cont }} {{ x.seal }}</td><td class="muted mini">{{ x.by }} {{ x.note }}</td></tr>
+    {% else %}<tr><td class="muted">Chưa ghi nhận lần xuất nào</td></tr>{% endfor %}
+    {% if v3.execs %}<tr><td><b>Tổng</b></td><td class="right mono"><b>{{ '{:,.0f}'.format(v3.shipped) }}</b></td>
+      <td colspan="2" class="muted mini">/ {{ '{:,.0f}'.format(sh.qty or 0) if sh.qty else '' }}</td></tr>{% endif %}
+    </tbody></table>
+    {% if v3.can_exec %}
+    <form class="inline" method="post" action="/shipments/{{ sh.code }}/executions" style="margin-top:10px">
+      <input type="hidden" name="_csrf" value="{{ csrf }}">
+      <input type="date" name="ship_date" value="{{ v3.today }}" required>
+      <input name="qty" placeholder="SL xuất" size="8" required>
+      <select name="booking_id"><option value="">(booking)</option>{% for b in v3.bookings if b.status not in ['CANCELLED','REBOOKED'] %}<option value="{{ b.id }}">{{ b.label }}</option>{% endfor %}</select>
+      <input name="container" placeholder="Container" size="12"><input name="seal" placeholder="Seal" size="10">
+      <button class="ghost" type="submit">Ghi nhận</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="two">
+  <div class="card" id="chung-tu">
+    <h3>Chứng từ (Document Matrix)</h3>
+    <table>
+      <thead><tr><th>Chứng từ</th><th>Hạn</th><th>Trạng thái</th><th>Phiên bản</th></tr></thead>
+      <tbody>
+      {% for d in v3.docs %}
+        <tr><td>{{ d.label }}{% if not d.required %} <span class="mini muted">(thêm)</span>{% endif %}</td>
+          <td class="mono">{{ d.due.strftime('%d/%m') if d.due else '' }}</td>
+          <td><span class="st {{ d.state }}">{{ d.state }}</span>
+            {% if v3.can_approve and d.doc_id and d.state in ['OK','REJECTED','APPROVED'] %}
+            <form class="inline" method="post" action="/documents/{{ d.doc_id }}/status" style="display:inline-flex">
+              <input type="hidden" name="_csrf" value="{{ csrf }}">
+              {% if d.status != 'APPROVED' %}<button class="ghost btn-sm" name="status" value="APPROVED">Duyệt</button>{% endif %}
+              {% if d.status != 'REJECTED' %}<button class="ghost btn-sm" name="status" value="REJECTED">Trả lại</button>{% endif %}
+            </form>{% endif %}</td>
+          <td class="mini">{% for v in v3.versions.get(d.code, []) %}<a href="/documents/versions/{{ v.id }}" title="{{ v.filename }} · {{ v.by }} {{ v.at.strftime('%d/%m %H:%M') if v.at else '' }} · {{ v.source }}">v{{ v.version }}</a>{{ ' ' if not loop.last }}{% endfor %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% if v3.can_upload %}
+    <form class="inline" method="post" action="/shipments/{{ sh.code }}/documents" enctype="multipart/form-data" style="margin-top:10px">
+      <input type="hidden" name="_csrf" value="{{ csrf }}">
+      <select name="doc_type">{% for k, label in v3.doc_types.items() %}<option value="{{ k }}">{{ label }}</option>{% endfor %}</select>
+      <input type="file" name="file" required>
+      <input name="note" placeholder="Ghi chú" size="14">
+      <button class="ghost" type="submit">Tải lên</button>
+    </form>
+    <p class="mini muted">Tải lại file mới = version mới, bản cũ vẫn giữ. PDF booking confirm từ email tự lưu vào BOOKING.</p>
+    {% endif %}
+  </div>
+  <div class="card" id="task">
+    <h3>Quy trình B1–B15.1</h3>
+    <table><tbody>
+    {% for t in v3.tasks %}
+      <tr><td class="mono"><b>{{ t.step }}</b></td><td>{{ t.name }}{% if t.missing_docs and t.status not in ['COMPLETED','SKIPPED','CANCELLED'] %}<div class="mini late">thiếu {{ t.missing_docs|join(', ') }}</div>{% endif %}</td>
+        <td class="mono nowrap {{ 'late' if t.display=='OVERDUE' }}">{{ t.due.strftime('%d/%m') if t.due else '' }}</td>
+        <td><span class="st {{ t.display }}">{{ t.display }}</span></td>
+        <td class="nowrap">{% if v3.can_task %}
+          <form class="inline" method="post" action="/tasks/{{ t.id }}/status">
+            <input type="hidden" name="_csrf" value="{{ csrf }}"><input type="hidden" name="back" value="/shipments/{{ sh.code }}">
+            {% if t.status in ['COMPLETED','SKIPPED','CANCELLED'] %}<button class="ghost btn-sm" name="status" value="PENDING">Mở lại</button>
+            {% else %}<button class="btn-sm" name="status" value="COMPLETED" {% if t.display=='BLOCKED' %}disabled title="Chờ bước trước xong"{% endif %}>Xong</button>
+              <button class="ghost btn-sm" name="status" value="SKIPPED">Bỏ qua</button>{% endif %}
+          </form>{% endif %}</td></tr>
+    {% else %}<tr><td class="muted">Chưa sinh task (lô ngoài khung ngày hoặc chưa có EX-FACT)</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+</div>
+
+<div class="two">
+  <div class="card">
+    <h3>Email Outlook của lô</h3>
+    <table><tbody>
+    {% for e in v3.emails %}
+      <tr><td class="mono nowrap">{{ e.received.strftime('%d/%m %H:%M') if e.received else '' }}</td>
+        <td><a href="/emails/{{ e.id }}">{{ e.subject }}</a></td><td class="mini">{{ e.category }}</td>
+        <td><span class="st {{ e.status }}">{{ e.status }}</span></td></tr>
+    {% else %}<tr><td class="muted">Chưa có email ghép vào lô này</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+  <div class="card">
+    <h3>Dòng thời gian</h3>
+    <div style="max-height:320px;overflow:auto">
+    <table><tbody>
+    {% for e in v3.events %}
+      <tr><td class="mono nowrap">{{ e.ts.strftime('%d/%m %H:%M') }}</td><td class="mini"><b>{{ e.type }}</b>
+        {% if e.old or e.new %}<span class="mono">{{ e.old }} → {{ e.new }}</span>{% endif %}
+        <div class="muted">{{ e.source }}{% if e.actor %} · {{ e.actor }}{% endif %}{% if e.note %} · {{ e.note }}{% endif %}
+          {% if e.booking_id %} · <a href="/bookings/{{ e.booking_id }}">booking</a>{% endif %}{% if e.email_id %} · <a href="/emails/{{ e.email_id }}">email</a>{% endif %}</div></td></tr>
+    {% else %}<tr><td class="muted">Chưa có sự kiện</td></tr>{% endfor %}
+    </tbody></table>
+    </div>
   </div>
 </div>
 

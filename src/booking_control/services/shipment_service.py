@@ -310,6 +310,12 @@ def apply_edits(
         )
 
     s.flush()
+    if any(c[0] == "BookingNo" for c in changed) and sh.booking_no:
+        # Go BOOKING NO tren luoi -> tao / noi booking (booking tach rieng - SRSv5)
+        from .booking_service import sync_from_row
+
+        sync_from_row(s, sh, actor=p.name, source="USER")
+        s.flush()
     engine.recompute(s, sh, today)
     res.changed = [c[0] for c in changed]
     res.ok = not res.errors
@@ -381,6 +387,11 @@ def create_shipment(
         assign(s, [sh], target, by=p.name, method="MANUAL", note="tao lo tren web")
     else:
         auto_assign(s, engine.settings.assignment, [sh])
+    if sh.booking_no:
+        from .booking_service import sync_from_row
+
+        sync_from_row(s, sh, actor=p.name, source="USER")
+        s.flush()
     engine.recompute(s, sh, today)
     return sh
 

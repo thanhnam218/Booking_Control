@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Phân quyền</h2>
+<p class="page-sub">Quyền được kiểm tra ở máy chủ cho mọi thao tác. Người dùng chỉ thao tác trên lô được giao
+  (phụ trách chính hoặc dự phòng). Đổi vai trò ở <a href="/admin/users">Người dùng</a>.</p>
+<div class="card scroll-x">
+<table>
+  <thead><tr><th>Quyền</th>{% for r in roles %}<th style="text-align:center">{{ role_labels.get(r, r) }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for m in matrix %}
+    <tr><td>{{ m.label }} <span class="mono mini muted">{{ m.perm }}</span></td>
+      {% for r in roles %}<td style="text-align:center">{{ '✔' if m.roles[r] else '' }}</td>{% endfor %}</tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

@@ -11,7 +11,7 @@ from typing import Any
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from ..audit import log_audit
 from ..db import session_scope
@@ -70,16 +70,22 @@ def followup_page(request: Request):
 
 
 @router.get("/api/followup/rows")
-def followup_rows(request: Request):
+def followup_rows(request: Request, page: int = 1):
+    """Phan trang phia may chu (grid_page_size dong / trang) - 10.000+ lo van mo nhanh."""
     p = current(request)
     today = dt.date.today()
     tmpl = engine().template
-    limit = settings().web.grid_page_size
+    limit = max(10, settings().web.grid_page_size)
+    page = max(1, page)
     with session_scope() as s:
-        stmt = svc.order_like_followup(svc.apply_filters(svc.visible_stmt(p), _filters(request)))
-        ships = list(s.execute(stmt.limit(limit + 1)).scalars())
-        rows = [svc.grid_row(sh, tmpl, today, settings().status_color) for sh in ships[:limit]]
-    return {"rows": rows, "truncated": len(ships) > limit, "limit": limit}
+        base = svc.apply_filters(svc.visible_stmt(p), _filters(request))
+        total = s.execute(select(func.count()).select_from(base.order_by(None).subquery())).scalar_one()
+        stmt = svc.order_like_followup(base).offset((page - 1) * limit).limit(limit)
+        ships = list(s.execute(stmt).scalars())
+        rows = [svc.grid_row(sh, tmpl, today, settings().status_color) for sh in ships]
+    pages = max(1, -(-total // limit))
+    return {"rows": rows, "truncated": total > page * limit, "limit": limit, "page": page, "pages": pages,
+            "total": total}
 
 
 class RowChange(BaseModel):

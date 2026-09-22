@@ -7,12 +7,16 @@ Moi trang deu can dang nhap; quyen kiem tra o backend.
     /                          Dashboard (Lo hang cua toi / Team Workload)
     /followup                  Luoi Follow Up 47 cot giong Excel (sua, dan, keo, loc, xuat Excel)
     /shipments, /shipments/ID  Danh sach + chi tiet lo hang (Why?, container, lich su)
+    /bookings, /bookings/ID    Booking tach rieng: split / gop / hold / huy / rebook / xuat mot phan (v3)
+    /emails, /emails/ID        Hang cho duyet email Outlook: ghep lo, chon gia tri email / PDF (v3)
+    /tasks                     Viec cua toi: task B1-B15.1, chung tu con thieu (v3)
+    /weekly                    Weekly Planning tuan sau - han 12:00 thu 6 (v3)
     /assignments               Phan cong lo hang (Quan ly)
     /exceptions                Exception Center
     /notifications             Thong bao cua toi
     /import                    Nhap file Follow Up (xem truoc -> nhap)
     /automation                Cac job tu dong + lich su chay
-    /admin/users               Nguoi dung & vai tro (Admin)
+    /admin/users               Nguoi dung & vai tro (Admin);  /admin/permissions  ma tran quyen
     /mapping /buyers /settings /backups /audit
 """
 
@@ -72,14 +76,34 @@ def create_app(engine=None, scheduler=None) -> FastAPI:
             return JSONResponse({"error": exc.message}, status_code=403)
         return render(request, "error.html", status_code=403, message=exc.message)
 
+    from ..services.shipment_service import NotFound, ServiceError
+
+    @app.exception_handler(ServiceError)
+    async def _service_error(request: Request, exc: ServiceError):
+        code = 404 if isinstance(exc, NotFound) else 400
+        if is_api(request) or request.headers.get("x-csrf-token"):
+            return JSONResponse({"error": str(exc)}, status_code=code)
+        return render(request, "error.html", status_code=code, message=str(exc))
+
     @app.get("/healthz")
     def healthz():
         return {"ok": True}
 
-    from . import routes_admin, routes_auth, routes_grid, routes_main
+    from . import (
+        routes_admin,
+        routes_auth,
+        routes_booking,
+        routes_email,
+        routes_grid,
+        routes_main,
+        routes_work,
+    )
 
     app.include_router(routes_auth.router)
+    app.include_router(routes_booking.router)  # /bookings/new truoc /bookings/{id}
     app.include_router(routes_main.router)
     app.include_router(routes_grid.router)
+    app.include_router(routes_email.router)
+    app.include_router(routes_work.router)
     app.include_router(routes_admin.router)
     return app

@@ -168,6 +168,15 @@ class Shipment(Base):
         UniqueConstraint("shipment_key", name="uq_shipment_key"),
         Index("ix_shipment_exfty", "exfty_date"),
         Index("ix_shipment_status", "effective_status"),
+        # Tim nhanh NO / JO / GO / PO / Buyer / Booking / ETD (SRSv5 muc 47)
+        Index("ix_shipment_no", "shipment_no"),
+        Index("ix_shipment_jo", "jo"),
+        Index("ix_shipment_go", "go"),
+        Index("ix_shipment_po", "po"),
+        Index("ix_shipment_buyer", "buyer_code"),
+        Index("ix_shipment_booking", "booking_no"),
+        Index("ix_shipment_etd", "etd"),
+        Index("ix_shipment_group", "group_key"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -276,6 +285,11 @@ class Shipment(Base):
     version: Mapped[int] = mapped_column(Integer, default=1)  # optimistic lock
     updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
     updated_by: Mapped[str] = mapped_column(String(80), default="")
+
+    # Trang thai tach rieng (SRSv5 muc 18, Appendix A) - mau dong chi la lop hien thi
+    booking_status: Mapped[str] = mapped_column(String(20), default="NOT_BOOKED")
+    hold_status: Mapped[str] = mapped_column(String(12), default="NO_HOLD")  # NO_HOLD | HOLD | RELEASED
+    ship_status: Mapped[str] = mapped_column(String(20), default="NOT_SHIPPED")  # + PARTIALLY_/FULLY_SHIPPED
 
     invoices: Mapped[list[Invoice]] = relationship(back_populates="shipment", cascade="all,delete-orphan")
     declarations: Mapped[list[CustomsDeclaration]] = relationship(

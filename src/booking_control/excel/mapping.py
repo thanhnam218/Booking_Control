@@ -115,6 +115,7 @@ class FieldDictionary:
         self.sheet_ignore_below: float = float(sd.get("ignore_below_confidence", 0.35))
         self.ignore_sheet_patterns: list[str] = list(sd.get("ignore_sheet_patterns") or [])
         self.header_search_rows: int = int(sd.get("header_search_rows", 15))
+        self._match_cache: dict[str, tuple[str | None, float, str]] = {}
 
     @property
     def parse_ctx(self) -> dict[str, Any]:
@@ -146,15 +147,29 @@ class FieldDictionary:
 
         if key in self._alias_index:
             return self._alias_index[key], 1.0, "alias"
+        hit = self._match_cache.get(key)
+        if hit is not None:  # cung 1 header lap lai o nhieu sheet / nhieu lan quet -> khong tinh lai
+            return hit
+        out = self._fuzzy(key)
+        if len(self._match_cache) > 50_000:
+            self._match_cache.clear()
+        self._match_cache[key] = out
+        return out
 
-        # fuzzy tren toan bo alias
+    def _fuzzy(self, key: str) -> tuple[str | None, float, str]:
         best_field, best_score = None, 0.0
         for alias_key, fname in self._alias_index.items():
+            contains = bool(alias_key) and len(alias_key) >= 4 and alias_key in key
+            if not contains:
+                # can tren cua SequenceMatcher.ratio(): khong the vuot diem tot nhat / nguong review -> bo qua
+                upper = 2.0 * min(len(key), len(alias_key)) / (len(key) + len(alias_key))
+                if upper <= best_score or upper < self.fuzzy_review:
+                    continue
             score = similarity(key, alias_key)
             # Header chua tron ven alias (vd "FINALCBMM3" chua "FINALCBM").
             # Chi coi la khop manh khi alias chiem phan lon header - tranh viec
             # "GHICHUNOIBOCUAPHONGKETOAN" bi ep thanh "Remark" chi vi chua "GHICHU".
-            if alias_key and len(alias_key) >= 4 and alias_key in key:
+            if contains:
                 coverage = len(alias_key) / max(len(key), 1)
                 score = max(score, 0.90 if coverage >= 0.6 else 0.80)
             if score > best_score:

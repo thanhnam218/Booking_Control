@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Email Outlook</h2>
+<p class="page-sub">Email booking đọc từ Outlook desktop trên máy chủ (Inbox + Sent Items).
+  Đủ điểm tin cậy và email/PDF khớp nhau &rarr; tự cập nhật; còn lại chờ bạn chọn lô.
+  {% if not outlook_on %}<b>Outlook đang tắt</b> (config.yaml &gt; outlook.enabled).{% endif %}</p>
+{% if msg %}<div class="flash ok">{{ msg }}</div>{% endif %}
+{% if err %}<div class="flash err">{{ err }}</div>{% endif %}
+
+<div class="tabs">
+  {% for k, label in tabs %}
+  <a href="/emails?tab={{ k }}" class="{{ 'on' if tab==k }}">{{ label }}{% if counts.get(k) %}<b>{{ counts[k] }}</b>{% endif %}</a>
+  {% endfor %}
+</div>
+<form class="toolbar" method="get" action="/emails">
+  <input type="hidden" name="tab" value="{{ tab }}">
+  <input name="q" value="{{ q }}" placeholder="Tiêu đề / người gửi" size="30">
+  <button type="submit">Tìm</button>
+</form>
+
+<div class="card scroll-x">
+<table>
+  <thead><tr><th>Nhận lúc</th><th></th><th>Tiêu đề</th><th>Loại</th><th>Lô</th><th class="right">Điểm</th><th>Trạng thái</th></tr></thead>
+  <tbody>
+  {% for e in rows %}
+    <tr>
+      <td class="mono nowrap">{{ e.received.strftime('%d/%m %H:%M') if e.received else '' }}</td>
+      <td title="{{ 'Email mình gửi (Sent Items)' if e.direction=='OUT' else 'Email đến' }}">{{ '↗' if e.direction=='OUT' else '↘' }}</td>
+      <td><a href="/emails/{{ e.id }}">{{ e.subject or '(không tiêu đề)' }}</a>
+        <div class="mini muted">{{ e.sender }}{% if e.forwarder %} · {{ e.forwarder }}{% endif %}</div></td>
+      <td class="mini">{{ cat_labels.get(e.category, e.category) }}</td>
+      <td class="mono mini">{{ e.shipments|join(', ') }}</td>
+      <td class="right mono">{{ e.score or '' }}</td>
+      <td><span class="st {{ e.status }}">{{ e.status }}</span>
+        {% if e.conflicts %}<div class="mini late">khác nhau: {{ e.conflicts|join(', ') }}</div>{% endif %}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="muted">Không có email ở mục này</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

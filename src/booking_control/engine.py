@@ -21,6 +21,7 @@ from .audit import log_audit, raise_exception
 from .core import deadline as dl
 from .core import forwarder as fw
 from .core import status as st
+from .core import weekly
 from .core.buyer_rules import BuyerRegistry
 from .core.container import ContainerSpec, merge_specs, parse_container_type, plan_containers
 from .core.normalize import clean_text, norm_key, to_canonical_date
@@ -202,7 +203,7 @@ class AutomationEngine:
                 # Chi tao san lan dau. Sau do Admin quan ly vai tro / mat khau tren web.
                 if row is None:
                     s.add(User(name=u.name, display_name=u.display_name, email=u.email,
-                               role=u.role if u.role in ("admin", "manager", "user", "viewer") else "user",
+                               role=u.role if u.role in ("admin", "manager", "user", "viewer", "auditor") else "user",
                                team=u.team))
 
             for f in self.settings.files:
@@ -256,6 +257,8 @@ class AutomationEngine:
                 shipments = self._persist_shipments(s, candidates, res, today)
                 allocations = self._allocate_containers(s, shipments, candidates)
                 self._evaluate_status(s, shipments, candidates, res, today)
+                if not dry_run:
+                    self._sync_tasks(s, list(shipments.values()), today)
                 events = self._evaluate_deadlines(s, shipments, candidates, res, today)
                 self._dispatch(s, events, shipments, res, deliver_notifications)
                 self._write_outputs(s, shipments, allocations, res, dry_run, today)
@@ -470,6 +473,7 @@ class AutomationEngine:
             shipments = self._persist_shipments(s, cands, res, today)
             self._allocate_containers(s, shipments, cands)
             self._evaluate_status(s, shipments, cands, res, today)
+            self._sync_tasks(s, list(shipments.values()), today)
             log_audit(s, "EXCEL_IMPORTED", actor_type="USER", actor_name=owner, entity="file",
                       entity_id=code, new_value=f"{out['new']} moi / {out['update']} cap nhat")
             s.commit()
@@ -599,8 +603,26 @@ class AutomationEngine:
         if not res.dry_run:
             assigned = auto_assign(s, self.settings.assignment, list(out.values()))
             res.auto_assigned = len(assigned.changed)
+            self._sync_bookings_and_tasks(s, list(out.values()), today)
         res.shipments_total = len(out)
         return out
+
+    def _sync_bookings_and_tasks(self, s: Session, ships: list[Shipment], today: dt.date) -> None:
+        """BOOKING NO trong Excel -> booking (truoc Status Engine vi mau dong dua vao booking)."""
+        from .services import booking_service
+
+        booking_service.sync_rows(s, ships, actor="automation", source="EXCEL")
+        s.flush()
+        booking_service.allocation_warnings(s, ships)
+
+    def _sync_tasks(self, s: Session, ships: list[Shipment], today: dt.date) -> None:
+        """Sinh / cap nhat task B1-B15.1 SAU Status Engine (auto_done can booking / ship status moi nhat)."""
+        from .services import workflow_service
+
+        try:
+            workflow_service.ensure_tasks(s, self.settings, ships, today)
+        except ValueError as exc:  # workflow.yaml sai -> bao loi, khong lam hong ca lan quet
+            log.error("workflow.yaml: %s", exc)
 
     # ------------------------------------------------------------------
     # Gan gia tri 47 cot -> cac cot nghiep vu (dung chung cho Excel import va web)
@@ -709,7 +731,8 @@ class AutomationEngine:
         tmpl = self.template
         changed = False
         for fld, meta in src.items():
-            if (meta or {}).get("src") not in ("USER", "MANAGER"):
+            # Thu tu uu tien SRSv5 muc 38: User / Quan ly / email Outlook xac nhan > Excel import
+            if (meta or {}).get("src") not in ("USER", "MANAGER", "OUTLOOK", "BOOKING"):
                 continue
             web_val = (sh.row_data or {}).get(fld)
             ex_val = tmpl.to_json(fld, v.get(fld))
@@ -997,6 +1020,11 @@ class AutomationEngine:
         rule = self.settings.status.completed_rule
         completion = rule.model_dump()
         by_key = {c.key: c for c in candidates}
+        # Booking tach rieng + lan xuat thuc te (SRSv5): nguon chinh thuc cho BOOKED / HOLD / CANCEL / PARTIAL
+        from .core import booking as bkcore
+        from .services.booking_service import summaries as booking_summaries
+
+        booking_info = booking_summaries(s, list(shipments.values()))
 
         # 1. Trang thai Automation tung dong
         results: dict[str, st.StatusResult] = {}
@@ -1011,6 +1039,20 @@ class AutomationEngine:
                 "BookingNo": sh.booking_no, "CDF": sh.cdf, "BL": sh.bl,
                 "_booking_mode": sh.booking_mode,
             }
+            summary, shipped = booking_info.get(sh.shipment_code, (bkcore.ShipmentBookingSummary(), 0.0))
+            extra = bkcore.status_values(summary, shipped)
+            if extra.get("HoldFlag") and sh.hold_flag:
+                extra.pop("HoldReason", None)  # giu ly do hold ghi trong REMARK
+            values.update(extra)
+            if extra.get("ShippedQty") and not values.get("FinalExportQty"):
+                values["FinalExportQty"] = sh.order_qty  # chua co SL chot -> so voi SL don hang
+            sh.booking_status = summary.booking_status if summary.has_bookings else (
+                "BOOKED" if (sh.booking_flag or sh.booking_no) else "NOT_BOOKED")
+            new_hold = "HOLD" if (values.get("HoldFlag")) else (
+                "RELEASED" if sh.hold_status in ("HOLD", "RELEASED") else "NO_HOLD")
+            sh.hold_status = new_hold
+            sh.ship_status = bkcore.ship_status(values.get("ShippedQty"), sh.final_export_qty or sh.order_qty) \
+                if values.get("ShippedQty") else ("FULLY_SHIPPED" if sh.shipped_flag else "NOT_SHIPPED")
             # Chi xet "da xuat xong" khi file co cot tuong ung (CONT/SEAL/ETD)
             for fld, attr in (("ContainerNo", "container_no"), ("SealNo", "seal_no"), ("ETD", "etd")):
                 if fld in has:
@@ -1187,6 +1229,16 @@ class AutomationEngine:
                 )
                 res.exceptions += 1
 
+        # Task B1-B15.1 qua han + chung tu bat buoc qua han (SRSv5 muc 30-31, 61)
+        if not res.dry_run:
+            from .services.workflow_service import deadline_events as workflow_events
+
+            try:
+                events.extend(workflow_events(s, self.settings,
+                                              [sh for sh in shipments.values() if not sh.archived], today))
+            except Exception as exc:  # noqa: BLE001 - loi cau hinh workflow khong lam hong ca lan quet
+                res.errors.append(f"Workflow: {exc}")
+
         res.events = len(events)
         return events
 
@@ -1244,11 +1296,14 @@ class AutomationEngine:
                     continue
 
                 by_sheet: dict[str | None, list[dict[str, Any]]] = {}
+                # Tu thu 5: Weekly Planning ghi luon lo cua tuan sau (han chot 12:00 thu 6 - SRSv5 muc 36)
+                wp_until = weekly.horizon(today, self.settings.weekly_planning) if role == "weekly_planning" else None
                 for sh in shipments.values():
                     if sh.effective_status in ("CANCELLED",):
                         continue
                     due = dl.due_milestones(sh.exfty_date, self.settings.deadlines, today)
-                    if spec.milestone not in due:
+                    next_week = bool(wp_until and sh.exfty_date and today <= sh.exfty_date <= wp_until)
+                    if spec.milestone not in due and not next_week:
                         continue
                     if sh.exfty_date and sh.exfty_date < today and not self._has_planning(s, role, sh):
                         continue  # lo da xuat roi: khong chen dong lich su, chi cap nhat dong da co

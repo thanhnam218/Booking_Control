@@ -116,7 +116,36 @@ def dashboard(request: Request):
                 "notifications": last_run.notifications, "exceptions": last_run.exceptions,
                 "error": last_run.error},
         )
+        data["v3"] = _dashboard_v3(s, p, ships, today)
     return render(request, "dashboard.html", **data)
+
+
+def _dashboard_v3(s, p, ships: list[Shipment], today: dt.date) -> dict[str, Any]:
+    """Tile v3: email cho duyet, task qua han, booking can xu ly, Weekly Planning."""
+    from ..core import workflow as wf
+    from ..db.models_v3 import Booking, BookingShipment, WorkflowTask
+    from ..services import weekly_service
+    from .routes_email import queue_counts
+
+    codes = [sh.shipment_code for sh in ships]
+    q = queue_counts(s, p)
+    tstmt = select(WorkflowTask.due_date).where(WorkflowTask.status.not_in(tuple(wf.DONE)),
+                                                WorkflowTask.due_date.is_not(None), WorkflowTask.due_date <= today)
+    if p.role == "user":
+        tstmt = tstmt.where(WorkflowTask.owner == p.name)
+    else:
+        tstmt = tstmt.where(WorkflowTask.shipment_code.in_(codes or ["-"]))
+    dues = [d for (d,) in s.execute(tstmt).all()]
+    attention = s.execute(
+        select(func.count(func.distinct(Booking.id))).join(BookingShipment, BookingShipment.booking_id == Booking.id)
+        .where(BookingShipment.shipment_code.in_(codes or ["-"]),
+               Booking.status.in_(("REQUESTED", "PENDING", "ON_HOLD", "DELAYED", "CANCEL_REQUESTED",
+                                   "REBOOK_REQUESTED")))).scalar_one()
+    weekly = weekly_service.status(s, engine().settings, user="" if p.can("shipments.view_all") else p.name)
+    weekly.pop("rows", None)
+    return {"emails": q["REVIEW"] + q["CONFLICT"] + q["UNMATCHED"], "conflicts": q["CONFLICT"],
+            "tasks_overdue": sum(d < today for d in dues), "tasks_today": sum(d == today for d in dues),
+            "bookings_attention": attention, "weekly": weekly}
 
 
 # ---------------------------------------------------------------------------
@@ -188,7 +217,8 @@ def shipment_detail(request: Request, code: str):
             "container_no": sh.container_no, "seal_no": sh.seal_no, "closing_time": sh.closing_time,
             "go": sh.go, "derived_notes": sh.derived_notes or {}, "user_color": sh.user_color,
             "version": sh.version, "archived": sh.archived, "updated_by": sh.updated_by,
-            "updated_at": sh.updated_at,
+            "updated_at": sh.updated_at, "qty": sh.final_export_qty or sh.order_qty,
+            "booking_status": sh.booking_status, "hold_status": sh.hold_status, "ship_status": sh.ship_status,
         })
         fields = [{"label": c.label, "field": c.field, "value": (sh.row_data or {}).get(c.field),
                    "src": ((sh.field_src or {}).get(c.field) or {}).get("src", c.source),
@@ -209,7 +239,11 @@ def shipment_detail(request: Request, code: str):
                          if u.role in ("user", "manager", "admin")) if p.can("shipments.assign") else [],
             can_edit=svc.can_edit(p, sh),
             forwarder_candidates=(sh.derived_notes or {}).get("forwarder_candidates", []),
+            msg=request.query_params.get("msg", ""), err=request.query_params.get("err", ""),
         )
+        from .routes_work import shipment_v3_context
+
+        ctx.update(shipment_v3_context(s, p, sh, today))
     return render(request, "shipment_detail.html", **ctx)
 
 

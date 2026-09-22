@@ -26,7 +26,7 @@ import yaml
 
 from ..core.normalize import apply_derived_rule, clean_text, parse_date, parse_decimal
 
-ROLES = ("admin", "manager", "user", "viewer")
+ROLES = ("admin", "manager", "user", "viewer", "auditor")
 MANAGER_ROLES = ("admin", "manager")
 FIELD_RE = re.compile(r"\[([A-Za-z_][A-Za-z0-9_]*)\]")
 

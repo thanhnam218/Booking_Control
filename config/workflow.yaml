@@ -1,0 +1,86 @@
+# =============================================================================
+# QUY TRINH B1-B15.1 + DOCUMENT MATRIX (SRSv5 muc 27-31, SRSv4 muc 57-58)
+# =============================================================================
+# Moi lo hang sinh cac task theo mau duoi day. Han = ngay moc + offset (ngay).
+#   anchor: EXFTY (ngay xuat) | ETD | BOOKING (ngay tao booking)
+#   depends_on: task phai xong truoc -> chua xong thi task nay la BLOCKED
+#   required_docs: chung tu phai co (da tai len) truoc khi bam Hoan thanh
+#   modes: SEA / AIR / ALL
+#   auto_done: task TU HOAN THANH khi he thong thay bang chung (buoc truoc da xong), khong can bam tay:
+#     shipment_created   lo da co trong Follow Up
+#     booking_requested  da co booking (email yeu cau / BOOKING NO / tao tren web)
+#     booking_confirmed  booking da xac nhan
+#     departed           tau da chay / da xuat du so luong
+#     documents          da tai du chung tu trong required_docs
+#   Nguoi dung doi tay trang thai task (Mo lai / Bo qua) -> Automation khong tu doi lai task do.
+# Sua file nay de doi quy trinh theo Buyer / Forwarder ma khong sua code.
+# =============================================================================
+
+version: 1
+
+# Chi sinh task cho lo co EX-FACT trong khoang nay (tranh sinh task cho lo cu)
+generate_window_days: [-30, 75]
+
+document_types:
+  - { code: BOOKING,        label: "Booking / Booking Confirmation" }
+  - { code: INVOICE,        label: "Invoice" }
+  - { code: PKL,            label: "Packing List (Final PKL)" }
+  - { code: SI,             label: "Shipping Instruction (SI)" }
+  - { code: VGM,            label: "VGM" }
+  - { code: CLP,            label: "Container Load Plan (CLP)" }
+  - { code: DO_DIA,         label: "DO DIA" }
+  - { code: E_SHIPMENT,     label: "E-Shipment" }
+  - { code: EXPORT_DECL,    label: "Tờ khai xuất khẩu" }
+  - { code: BK,             label: "BK" }
+  - { code: DRAFT_BILL,     label: "Draft Bill / FCR" }
+  - { code: CO,             label: "CO (Draft)" }
+  - { code: FINAL_CO,       label: "Final CO" }
+  - { code: PNK,            label: "PNK" }
+  - { code: BL,             label: "Final Bill / Surrender Bill" }
+  - { code: DEBIT_NOTE,     label: "Debit Note" }
+
+# Ten file chuan hoa khi luu (SRSv4 muc 58): {NO} {JO} {DOC} {BUYER} {VERSION}
+naming: "{REF}_{DOC}_v{VERSION}"
+
+# Document Matrix: chung tu bat buoc theo Mode (+ Buyer / Forwarder neu can).
+# Rule cu the hon (co buyer/forwarder) duoc cong them vao rule chung.
+document_rules:
+  - { mode: SEA, required: [BOOKING, INVOICE, PKL, SI, VGM, CLP, EXPORT_DECL, DRAFT_BILL, BL] }
+  - { mode: AIR, required: [BOOKING, INVOICE, PKL, EXPORT_DECL, DRAFT_BILL, BL] }
+  - { buyer: ["KRB"], required: [CO, FINAL_CO] }
+  - { buyer: ["IKEA"], forwarder: ["FWD-OCEAN-1"], required: [DO_DIA] }
+
+# Han chung tu (neu khong khai -> theo task dung no, hoac EX-FACT)
+document_deadlines:
+  BOOKING:     { anchor: EXFTY, offset: -14 }
+  INVOICE:     { anchor: EXFTY, offset: -3 }
+  PKL:         { anchor: EXFTY, offset: -3 }
+  SI:          { anchor: EXFTY, offset: -2 }
+  VGM:         { anchor: EXFTY, offset: -2 }
+  CLP:         { anchor: EXFTY, offset: -1 }
+  EXPORT_DECL: { anchor: EXFTY, offset: -1 }
+  DRAFT_BILL:  { anchor: ETD, offset: 1 }
+  BL:          { anchor: ETD, offset: 5 }
+  CO:          { anchor: ETD, offset: 3 }
+  FINAL_CO:    { anchor: ETD, offset: 10 }
+
+steps:
+  - { code: "B1",    name: "Shipment Schedule - tạo lô",                 anchor: EXFTY, offset: -20, auto_done: [shipment_created] }
+  - { code: "B2",    name: "Carton box / GO → gửi yêu cầu booking",     anchor: EXFTY, offset: -14, depends_on: [B1], auto_done: [booking_requested] }
+  - { code: "B3",    name: "Yêu cầu SSC Invoice + Final PKL",            anchor: EXFTY, offset: -3,  depends_on: [B2], required_docs: [INVOICE, PKL], auto_done: [documents] }
+  - { code: "B3.1",  name: "Kéo container",                              anchor: EXFTY, offset: -1,  depends_on: [B2], modes: [SEA] }
+  - { code: "B4",    name: "PKL / SI / INV / DO DIA + kiểm HS Code",     anchor: EXFTY, offset: -2,  depends_on: [B3], required_docs: [SI], auto_done: [documents] }
+  - { code: "B5",    name: "Gửi chứng từ cho Forwarder",                 anchor: EXFTY, offset: -2,  depends_on: [B4], required_docs: [VGM], modes: [SEA] }
+  - { code: "B6",    name: "Chứng từ VVMV",                              anchor: EXFTY, offset: -1,  depends_on: [B4] }
+  - { code: "B6.1",  name: "E-Shipment",                                 anchor: EXFTY, offset: -1,  depends_on: [B4] }
+  - { code: "B6.2",  name: "Báo PPC / Leader / Kho",                     anchor: EXFTY, offset: -1,  depends_on: [B6.1] }
+  - { code: "B7",    name: "Tờ khai xuất khẩu + E-Shipment",             anchor: EXFTY, offset: 0,   depends_on: [B6.1], required_docs: [EXPORT_DECL], auto_done: [documents] }
+  - { code: "B8",    name: "BK",                                         anchor: EXFTY, offset: 0,   depends_on: [B7] }
+  - { code: "B9",    name: "Draft Bill / FCR - đối chiếu",               anchor: ETD,   offset: 1,   depends_on: [B8], required_docs: [DRAFT_BILL] }
+  - { code: "B10",   name: "Xin CO",                                     anchor: ETD,   offset: 2,   depends_on: [B9], only_if: co_required }
+  - { code: "B11",   name: "Draft CO - duyệt",                           anchor: ETD,   offset: 3,   depends_on: [B10], only_if: co_required, required_docs: [CO] }
+  - { code: "B12",   name: "PNK",                                        anchor: EXFTY, offset: 1,   depends_on: [B7] }
+  - { code: "B13",   name: "ATD + Bill",                                 anchor: ETD,   offset: 1,   depends_on: [B9], auto_done: [departed] }
+  - { code: "B14",   name: "Final CO",                                   anchor: ETD,   offset: 10,  depends_on: [B11], only_if: co_required, required_docs: [FINAL_CO], auto_done: [documents] }
+  - { code: "B15",   name: "Surrender Bill - kiểm tra",                  anchor: ETD,   offset: 5,   depends_on: [B13], required_docs: [BL] }
+  - { code: "B15.1", name: "Debit Note",                                 anchor: ETD,   offset: 15,  depends_on: [B15] }

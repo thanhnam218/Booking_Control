@@ -2,15 +2,26 @@
 
 **Web nội bộ quản lý Export Shipment & Booking** cho bộ phận logistics xuất khẩu — thay cho việc mỗi người tự theo dõi một file Excel Follow Up.
 
-- Lưới **Follow Up 47 cột giống hệt file Excel** (sửa trực tiếp, dán từ Excel, kéo điền, lọc, sắp xếp, cố định cột, công thức NO / 95% FOB / CDF AMOUNT / TSN AMOUNT tính đúng như Excel).
-- **Phân quyền** Quản trị / Quản lý / Người dùng (+ Chỉ xem), đăng nhập bằng tài khoản riêng.
-- **Quản lý phân công** lô hàng cho từng người phụ trách (giao lẻ, giao hàng loạt theo Buyer / Forwarder / ngày EX-FACT / Mode, người dự phòng, lịch sử).
+- Lưới **Follow Up 47 cột giống hệt file Excel** (sửa trực tiếp, dán từ Excel, kéo điền, lọc, sắp xếp, cố định cột, công thức NO / 95% FOB / CDF AMOUNT / TSN AMOUNT tính đúng như Excel), phân trang phía máy chủ.
+- **Phân quyền** Quản trị / Quản lý / Người dùng / Chỉ xem / **Kiểm soát (Auditor)** — quyền kiểm tra ở backend, có trang ma trận quyền.
+- **Quản lý phân công** lô hàng cho từng người phụ trách (giao lẻ, giao hàng loạt, người dự phòng, lịch sử).
+- **Booking tách riêng khỏi lô hàng** *(v3)*: 1 lô nhiều booking (split 600 + 400 = 1000), nhiều lô một booking (gộp), Hold / Giải tỏa / Trễ lịch / Hủy / **Rebook giữ lịch sử**, ghi nhận **xuất một phần** theo số lượng thực tế.
+- **Email Outlook desktop** *(v3)*: đọc Inbox + Sent Items trên máy chủ, phân loại (xác nhận / điều chỉnh / hủy / hold…), đọc **PDF booking confirmation** đính kèm, ghép lô theo **Conversation + điểm tin cậy**; đủ điểm thì tự cập nhật, còn lại vào **hàng chờ duyệt**; email ≠ PDF thì bắt người dùng chọn.
+- **Chứng từ có version + Document Matrix** *(v3)*: tải lên không ghi đè bản cũ, chứng từ bắt buộc theo Mode / Buyer / Forwarder, có hạn và duyệt.
+- **Quy trình B1 → B15.1** *(v3)*: task tự sinh cho từng lô, hạn theo EX-FACT / ETD, **tự hoàn thành khi hệ thống thấy bằng chứng** (có booking, đủ chứng từ, tàu chạy), trang "Việc của tôi".
+- **Weekly Planning hạn 12:00 thứ 6** *(v3)*: từ thứ 5 tự ghi lô tuần sau, nhắc thứ 5 / thứ 6 08:00 / 11:00, Quản lý bấm chốt.
 - **Xuất Excel** từ dữ liệu trên web: *lô của tôi* hoặc *theo bộ lọc* → mỗi Buyer một sheet, giữ đúng 47 cột và công thức.
-- **Automation Engine** chạy nền trên máy chủ (không có "Bot"): quét Follow Up, tính trạng thái, nhắc deadline D-20 → D-1, phân bổ container, ghi Weekly Planning / HS Code / MM Daily / Lịch xuất hàng, đọc mail Outlook.
+- **Automation Engine** chạy nền trên máy chủ (không có "Bot"): quét Follow Up, tính trạng thái, nhắc deadline D-20 → D-1, phân bổ container, ghi Weekly Planning / HS Code / MM Daily / Lịch xuất hàng, đọc Outlook.
 
 Chạy trên **một máy Windows làm máy chủ nội bộ**; đồng nghiệp mở bằng trình duyệt qua mạng LAN. Không cần Internet, không cần cài gì trên máy người dùng.
 
 ![Lưới Follow Up](docs/images/followup_grid.png)
+
+| Booking tách riêng | Email Outlook: email ≠ PDF |
+|---|---|
+| ![Booking](docs/images/booking_detail.png) | ![Email](docs/images/email_conflict.png) |
+| **Lô hàng: booking, xuất hàng, chứng từ, quy trình** | **Việc của tôi (B1 – B15.1)** |
+| ![Lô hàng](docs/images/shipment_v3.png) | ![Task](docs/images/tasks.png) |
 
 ---
 
@@ -21,34 +32,38 @@ Chạy trên **một máy Windows làm máy chủ nội bộ**; đồng nghiệp
   ─────────────────────────          ─────────────────────────────────────────────────
   Đăng nhập  ─────────────────────▶  Web (FastAPI) ── phân quyền ở backend ──┐
   Lưới Follow Up 47 cột ◀── JSON ──  API lưu tự động + optimistic lock      │
-  Phân công / Exception / Export                                             ▼
+  Booking / Email / Việc / Weekly                                            ▼
                                      Database (SQLite / SQL Server / PostgreSQL)
                                           ▲                          │
   File Follow Up Excel (OneDrive) ──▶ Automation Engine (APScheduler)│
-  Outlook desktop ─────────────────▶  followup_scan · notification_dispatch · outlook_scan
-                                      excel_write_retry · housekeeping  (ghi JobRun)
+  Outlook desktop (Inbox + Sent) ──▶  followup_scan · outlook_scan · weekly_planning_check
+  PDF booking confirmation            notification_dispatch · excel_write_retry · housekeeping
                                           │
                                           ▼
                      Weekly Planning · Custom Code · MM Daily · Lịch xuất (ghi lossless)
 ```
 
-Nguyên tắc: **Database là trung tâm**, Excel chỉ còn vai trò nhập / xuất / tương thích. Dữ liệu người dùng sửa trên web luôn thắng dữ liệu tự động (**USER > AUTOMATION**); nếu file Excel sau đó đổi khác, hệ thống giữ giá trị web và đưa vào Exception Center để Quản lý quyết định.
+Nguyên tắc: **Database là trung tâm**, Excel chỉ còn vai trò nhập / xuất / tương thích. Thứ tự ưu tiên nguồn dữ liệu: **Người dùng / Quản lý > Email Outlook > file Excel**. Người dùng đã sửa tay thì email không ghi đè (báo EX020); file Excel đổi khác giá trị web thì giữ giá trị web và đưa vào Exception Center. Booking không bao giờ bị xóa; trạng thái Booking / Hold / Xuất hàng là ba cột riêng, màu dòng chỉ là lớp hiển thị.
 
 ---
 
 ## Tính năng theo vai trò
 
-| | Quản trị | Quản lý | Người dùng | Chỉ xem |
-|---|:-:|:-:|:-:|:-:|
-| Xem lô hàng | tất cả | tất cả | lô được giao | tất cả |
-| Sửa trên lưới Follow Up | ✓ | ✓ | lô được giao, theo quyền từng cột | – |
-| Thêm lô hàng mới | ✓ | ✓ | ✓ (tự nhận phụ trách) | – |
-| Giao / giao lại / giao hàng loạt | ✓ | ✓ | – | – |
-| Xử lý Exception, duyệt xung đột Excel ↔ web | ✓ | ✓ | – | – |
-| Xuất Excel | tất cả / theo lọc | tất cả / theo lọc | lô của mình | tất cả / theo lọc |
-| Nhập file Follow Up (upload) | ✓ | ✓ | – | – |
-| Automation: quét ngay, xem lịch sử job | ✓ | ✓ | – | – |
-| Người dùng, mapping, buyer rule, cài đặt, backup | ✓ | – | – | – |
+| | Quản trị | Quản lý | Người dùng | Chỉ xem | Auditor |
+|---|:-:|:-:|:-:|:-:|:-:|
+| Xem lô hàng, booking, task | tất cả | tất cả | lô được giao | tất cả | tất cả |
+| Sửa trên lưới Follow Up | ✓ | ✓ | lô được giao, theo quyền từng cột | – | – |
+| Tạo / sửa / split / gộp booking, hold, hủy, rebook | ✓ | ✓ | lô được giao | – | – |
+| Ghi nhận xuất hàng một phần | ✓ | ✓ | lô được giao | – | – |
+| Duyệt email Outlook (ghép lô, chọn giá trị) | ✓ | ✓ | email của lô mình + email chưa ghép | – | xem tất cả |
+| Tải chứng từ / hoàn thành task | ✓ | ✓ | lô được giao | – | – |
+| Duyệt / trả lại chứng từ, chốt Weekly Planning | ✓ | ✓ | – | – | – |
+| Giao / giao lại / giao hàng loạt | ✓ | ✓ | – | – | – |
+| Xử lý Exception, duyệt xung đột Excel ↔ web | ✓ | ✓ | – | – | – |
+| Xuất Excel | tất cả / theo lọc | tất cả / theo lọc | lô của mình | tất cả / theo lọc | tất cả / theo lọc |
+| Audit Log, ma trận quyền | ✓ | ✓ | – | – | ✓ |
+| Nhập file Follow Up, Automation | ✓ | ✓ | – | – | – |
+| Người dùng, mapping, buyer rule, cài đặt, backup | ✓ | – | – | – | – |
 
 Quyền **từng cột** (Field Ownership Matrix) nằm trong [`config/followup_template.yaml`](config/followup_template.yaml): ví dụ Người dùng sửa được CBM, BOOKING NO, CONT, SEAL…; sửa BUYER / EX-FACT DATE thì được nhưng tạo mục "Quản lý xem lại"; cột công thức chỉ xem; NO chỉ Quản lý được ghi đè.
 
@@ -74,8 +89,8 @@ Chi tiết từng bước, cấu hình file Excel thật, chạy nền khi khở
 
 | Tài liệu | Dành cho |
 |---|---|
-| [INSTALL.md](docs/INSTALL.md) | Cài đặt, máy chủ LAN, tạo tài khoản, trỏ file Excel thật, chạy nền, nâng cấp từ v1 |
-| [USER_GUIDE.md](docs/USER_GUIDE.md) | Người dùng & Quản lý: lưới Follow Up, phân công, xuất/nhập Excel, trạng thái màu, deadline |
+| [INSTALL.md](docs/INSTALL.md) | Cài đặt, máy chủ LAN, tạo tài khoản, trỏ file Excel thật, bật Outlook desktop, thư mục chứng từ, chạy nền, nâng cấp |
+| [USER_GUIDE.md](docs/USER_GUIDE.md) | Người dùng & Quản lý: lưới Follow Up, booking, email Outlook, chứng từ, việc của tôi, Weekly Planning, phân công, xuất/nhập Excel |
 | [DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) | Lập trình viên: cấu trúc mã, thêm cột / công thức / quyền / job, test, đóng gói |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Kiến trúc, database, các quyết định thiết kế |
 | [DATA_MAPPING.md](docs/DATA_MAPPING.md) | 47 cột Follow Up ↔ trường chuẩn ↔ file đích |
@@ -94,13 +109,17 @@ Chi tiết từng bước, cấu hình file Excel thật, chạy nền khi khở
 .\scripts\run.bat user passwd nam.nguyen   # đặt lại mật khẩu
 .\scripts\run.bat user list
 .\scripts\run.bat backups F02              # liệt kê / khôi phục bản sao lưu file đích
+.\scripts\run.bat outlook                  # đọc Outlook ngay (máy chủ có Outlook desktop)
+.\scripts\run.bat outlook --demo           # nạp 5 email mẫu để thử hàng chờ duyệt (không cần Outlook)
 ```
 
 ---
 
 ## Công nghệ
 
-Python 3.11 · FastAPI + Jinja2 · SQLAlchemy 2 (SQLite mặc định; SQL Server / PostgreSQL qua `database.url`) · APScheduler · openpyxl (đọc) + lxml (ghi Excel lossless, không phá công thức / định dạng / link) · Jspreadsheet CE 4 (MIT, đóng gói sẵn để chạy offline) · pytest (≈230 test) · GitHub Actions (Windows + Ubuntu).
+Python 3.11 · FastAPI + Jinja2 · SQLAlchemy 2 (SQLite mặc định; SQL Server / PostgreSQL qua `database.url`) · APScheduler · openpyxl (đọc) + lxml (ghi Excel lossless, không phá công thức / định dạng / link) · Jspreadsheet CE 4 (MIT, đóng gói sẵn để chạy offline) · pywin32 (Outlook desktop qua COM) · pdfplumber (đọc chữ trong PDF) · pytest (≈260 test) · GitHub Actions (Windows + Ubuntu).
+
+Hiệu năng (đo trên 10.000 lô, 148.000 task, SQLite): các trang web mở dưới 2 giây; đồng bộ booking + task mỗi lần quét khoảng 2–3 giây.
 
 Vì sao không dùng Celery/Redis như SRS gợi ý: Celery không hỗ trợ Windows chính thức và cần thêm dịch vụ Redis. Với quy mô một phòng logistics (vài nghìn lô), APScheduler chạy trong tiến trình máy chủ là đủ; mỗi job vẫn có Job ID, thời gian, trạng thái, lỗi, số lần thử lại như SRS yêu cầu. Khi cần mở rộng, các job nằm gọn trong `scheduler.py` để chuyển sang hàng đợi riêng.
 
@@ -110,7 +129,8 @@ Vì sao không dùng Celery/Redis như SRS gợi ý: Celery không hỗ trợ Wi
 
 - Mật khẩu băm PBKDF2-SHA256; cookie phiên `HttpOnly` + `SameSite=Lax`; CSRF token cho mọi thao tác ghi; khóa tạm khi sai mật khẩu nhiều lần.
 - Phân quyền kiểm tra ở **backend** — kể cả xuất Excel (người dùng yêu cầu xuất "tất cả" vẫn chỉ nhận lô của mình).
-- Không xóa dữ liệu nghiệp vụ: lô hàng chỉ **lưu trữ**, tài khoản chỉ **khóa**; mọi thay đổi vào Audit Log (ai, lúc nào, giá trị cũ → mới).
+- Không xóa dữ liệu nghiệp vụ: lô hàng chỉ **lưu trữ**, tài khoản chỉ **khóa**, booking chỉ **hủy / rebook**, chứng từ chỉ **thêm version**; mọi thay đổi vào Audit Log + dòng thời gian lô hàng (ai, lúc nào, nguồn, giá trị cũ → mới).
+- Email Outlook chỉ lưu đoạn đầu nội dung + file đính kèm liên quan (PDF / Excel) trong thư mục dữ liệu máy chủ; chứng từ lưu ngoài database (có thể đặt ở ổ mạng).
 - Không đưa file Excel thật / mã buyer thật lên GitHub: `config/config.yaml`, `config/buyer_rules.yaml`, `data/`, `sample_data/` đã nằm trong `.gitignore`. Dữ liệu demo hoàn toàn giả lập.
 
 ## Giấy phép

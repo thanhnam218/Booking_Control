@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Tạo booking</h2>
+<p class="page-sub">Chọn 1 lô (booking thường), nhiều lô (booking gộp) hoặc ghi số lượng cho từng lô (tách lô ra nhiều booking:
+  vd 600 + 400 = 1000). Để trống số lượng = cả lô.</p>
+{% if err %}<div class="flash err">{{ err }}</div>{% endif %}
+
+<form method="post" action="/bookings/new" class="card">
+  <input type="hidden" name="_csrf" value="{{ csrf }}">
+  <h3>Lô hàng</h3>
+  <datalist id="ships">{% for o in options %}<option value="{{ o.code }}">{{ o.label }}{% if o.qty %} · {{ '{:,.0f}'.format(o.qty) }}{% endif %}</option>{% endfor %}</datalist>
+  <table id="lines">
+    <thead><tr><th>Mã lô (chọn từ danh sách)</th><th>Số lượng phân bổ</th><th></th></tr></thead>
+    <tbody>
+    {% for x in pre %}
+      <tr><td><input name="code" list="ships" value="{{ x.code }}" size="34"> <span class="muted">{{ x.jo }}{% if x.ship_qty %} · lô {{ '{:,.0f}'.format(x.ship_qty) }}{% endif %}</span></td>
+        <td><input name="qty" inputmode="decimal" placeholder="cả lô" size="10"></td><td></td></tr>
+    {% endfor %}
+      <tr><td><input name="code" list="ships" size="34" placeholder="Gõ JO để tìm"></td>
+        <td><input name="qty" inputmode="decimal" placeholder="cả lô" size="10"></td><td></td></tr>
+    </tbody>
+  </table>
+  <p><button type="button" class="ghost btn-sm" onclick="addLine()">+ Thêm lô</button></p>
+
+  <h3 style="margin-top:18px">Thông tin booking</h3>
+  <div class="fields">
+    <label>Trạng thái
+      <select name="status">{% for s in statuses %}<option value="{{ s }}">{{ labels.get(s, s) }}</option>{% endfor %}</select></label>
+    <label>Booking No<input name="booking_no" placeholder="để trống nếu mới gửi yêu cầu"></label>
+    <label>Forwarder<input name="forwarder" value="{{ base.forwarder or '' }}"></label>
+    <label>Mode<select name="mode"><option {{ 'selected' if base.mode!='AIR' }}>SEA</option><option {{ 'selected' if base.mode=='AIR' }}>AIR</option></select></label>
+    <label>Container<input name="container_plan" value="{{ base.container_plan or '' }}" placeholder="vd 2x40HC"></label>
+    <label>Vessel<input name="vessel" value="{{ base.vessel or '' }}"></label>
+    <label>Voyage<input name="voyage"></label>
+    <label>ETD<input type="date" name="etd" value="{{ base.etd or '' }}"></label>
+    <label>ETA<input type="date" name="eta"></label>
+    <label>CY cut-off<input name="cy_cutoff" placeholder="vd 01/10 12:00"></label>
+    <label>SI/VGM cut-off<input name="si_vgm_cutoff"></label>
+    <label>Closing<input name="closing_time"></label>
+    <label>Port<input name="port" value="{{ base.port or '' }}"></label>
+    <label>Ghi chú<input name="remark"></label>
+  </div>
+  <p style="margin-top:16px"><button type="submit">Tạo booking</button> <a class="btn ghost" href="/bookings">Hủy</a></p>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+function addLine(){
+  const tb = document.querySelector('#lines tbody');
+  const tr = tb.rows[tb.rows.length-1].cloneNode(true);
+  tr.querySelectorAll('input').forEach(i => i.value = '');
+  tb.appendChild(tr);
+}
+</script>
+{% endblock %}

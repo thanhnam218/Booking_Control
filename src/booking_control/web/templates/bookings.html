@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Booking</h2>
+<p class="page-sub">{{ rows|length }} booking &middot; booking tách riêng khỏi lô hàng: 1 lô nhiều booking (split),
+  1 booking nhiều lô (gộp) &middot; hủy / rebook không xóa lịch sử</p>
+{% if msg %}<div class="flash ok">{{ msg }}</div>{% endif %}
+{% if err %}<div class="flash err">{{ err }}</div>{% endif %}
+
+<form class="toolbar" method="get" action="/bookings">
+  <input name="q" value="{{ f.q }}" placeholder="Booking No / Vessel / JO / NO">
+  <select name="status">
+    <option value="ACTIVE" {{ 'selected' if f.status=='ACTIVE' }}>Đang hiệu lực</option>
+    <option value="ATTENTION" {{ 'selected' if f.status=='ATTENTION' }}>Cần xử lý (chờ / hold / trễ / xin hủy)</option>
+    <option value="ALL" {{ 'selected' if f.status=='ALL' }}>Tất cả (kể cả đã hủy)</option>
+    {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if f.status==s }}>{{ labels.get(s, s) }}</option>{% endfor %}
+  </select>
+  <select name="forwarder"><option value="">Mọi forwarder</option>
+    {% for x in forwarders %}<option {{ 'selected' if f.forwarder==x }}>{{ x }}</option>{% endfor %}</select>
+  <button type="submit">Lọc</button>
+  <a class="btn ghost" href="/bookings">Bỏ lọc</a>
+  {% if me.can('booking.edit') %}<a class="btn" href="/bookings/new" style="margin-left:auto">+ Tạo booking</a>{% endif %}
+</form>
+
+<div class="card scroll-x">
+<table>
+  <thead><tr><th>Booking</th><th>Trạng thái</th><th>Lô hàng (số lượng)</th><th>Forwarder</th><th>Vessel / Voy</th>
+    <th>ETD</th><th>CY cut-off</th><th>SI/VGM</th><th>Nguồn</th><th>Cập nhật</th></tr></thead>
+  <tbody>
+  {% for b in rows %}
+    <tr>
+      <td><a class="mono" href="/bookings/{{ b.id }}">{{ b.label }}</a>
+        {% if b.original_booking_id %}<div class="mini muted">rebook từ #{{ b.original_booking_id }}</div>{% endif %}</td>
+      <td><span class="bk {{ b.status }}">{{ b.status_label }}</span>
+        {% if b.hold_reason and b.status=='ON_HOLD' %}<div class="mini muted">{{ b.hold_reason }}</div>{% endif %}</td>
+      <td>{% for x in b.shipments %}<a class="mono" href="/shipments/{{ x.code }}">{{ x.jo }}</a>{% if x.qty is not none %} <span class="muted">{{ '{:,.0f}'.format(x.qty) }}</span>{% endif %}{{ ', ' if not loop.last }}{% endfor %}</td>
+      <td>{{ b.forwarder or '' }}</td>
+      <td class="mono">{{ b.vessel or '' }} {{ b.voyage or '' }}</td>
+      <td class="mono nowrap">{{ b.etd.strftime('%d/%m/%Y') if b.etd else '' }}</td>
+      <td class="mono nowrap">{{ b.cy_cutoff or '' }}</td>
+      <td class="mono nowrap">{{ b.si_vgm_cutoff or '' }}</td>
+      <td><span class="tag">{{ b.source }}</span></td>
+      <td class="mono nowrap muted">{{ b.updated_at.strftime('%d/%m %H:%M') if b.updated_at else '' }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="10" class="muted">Chưa có booking. Booking được tạo tự động khi cột BOOKING NO có số, khi email xác nhận
+      booking được ghép, hoặc bấm "Tạo booking".</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

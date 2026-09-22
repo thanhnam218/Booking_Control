@@ -4,6 +4,19 @@
 <p class="page-sub">{{ total }} lô hàng đang theo dõi &middot; {{ exc_count }} exception chưa xử lý
   &middot; <a href="/followup">Mở lưới Follow Up &rarr;</a></p>
 
+<div class="grid tiles" style="margin-bottom:16px">
+  <a class="tile" href="/emails" style="border-left-color:{{ 'var(--partial)' if v3.emails else 'var(--green)' }};text-decoration:none;color:inherit">
+    <div class="n">{{ v3.emails }}</div><div class="l">Email chờ duyệt</div>
+    <div class="d">{{ v3.conflicts }} email ≠ PDF</div></a>
+  <a class="tile" href="/tasks?show=overdue" style="border-left-color:{{ 'var(--red)' if v3.tasks_overdue else 'var(--green)' }};text-decoration:none;color:inherit">
+    <div class="n">{{ v3.tasks_overdue }}</div><div class="l">Task quá hạn</div><div class="d">{{ v3.tasks_today }} task đến hạn hôm nay</div></a>
+  <a class="tile" href="/bookings?status=ATTENTION" style="border-left-color:{{ 'var(--partial)' if v3.bookings_attention else 'var(--green)' }};text-decoration:none;color:inherit">
+    <div class="n">{{ v3.bookings_attention }}</div><div class="l">Booking cần xử lý</div><div class="d">chờ xác nhận / hold / trễ / xin hủy</div></a>
+  <a class="tile" href="/weekly" style="border-left-color:{{ 'var(--green)' if v3.weekly.confirmed else ('var(--red)' if v3.weekly.late or v3.weekly.hours_left < 30 else 'var(--accent)') }};text-decoration:none;color:inherit">
+    <div class="n">{{ v3.weekly.incomplete }}/{{ v3.weekly.total }}</div><div class="l">Weekly Planning {{ v3.weekly.label }}</div>
+    <div class="d">{% if v3.weekly.confirmed %}Đã chốt{% elif v3.weekly.late %}QUÁ HẠN chốt{% else %}lô còn thiếu · hạn 12:00 thứ 6{% endif %}</div></a>
+</div>
+
 <div class="card">
   <h3>Theo hạn EX-FACT</h3>
   <div class="grid tiles">

@@ -401,31 +401,39 @@ def backups(
 @app.command()
 def outlook(
     config: str = typer.Option(None, "--config", "-c"),
-    apply: bool = typer.Option(False, "--apply", help="Ap dung ngay thay vi chi tao Exception"),
+    demo: bool = typer.Option(False, "--demo", help="Nap vai email mau (khong can Outlook) de thu hang cho duyet"),
 ):
-    """Quet Outlook tim mail xac nhan / huy booking."""
+    """Doc email Outlook desktop (Inbox + Sent Items) -> ghep lo -> cap nhat booking / hang cho duyet."""
     from sqlalchemy import select
 
-    from .db.models import Shipment
+    from .db.models_v3 import Email
     from .integrations import outlook as ol
 
     engine = _boot(config, console_log=False)
-    if not ol.available():
-        console.print("[red]Khong chay duoc: can Windows + Outlook desktop + pywin32[/]")
-        raise typer.Exit(2)
+    if demo:
+        from .integrations.outlook_demo import demo_messages
+        from .services.email_service import EmailProcessor
 
-    with session_scope() as s:
-        jos = [j for (j,) in s.execute(select(Shipment.jo).distinct()).all() if j]
-        hits = ol.scan_mailbox(engine.settings.outlook, jos)
-        n = ol.apply_hits(s, hits, auto_apply=apply or engine.settings.outlook.auto_apply)
+        with session_scope() as s:
+            msgs = demo_messages(s)
+            summary = EmailProcessor(engine).ingest(s, msgs)
+    else:
+        if not ol.available():
+            console.print("[red]Khong chay duoc: can Windows + Outlook desktop dang mo + pywin32[/]\n"
+                          "Thu tren may khac: [cyan]bookingctl outlook --demo[/]")
+            raise typer.Exit(2)
+        summary = ol.scan_outlook(engine.settings, engine)
 
-    t = Table(title=f"Outlook: {len(hits)} mail lien quan")
-    for c in ("Nhan luc", "Loai", "JO", "Tieu de"):
+    t = Table(title="Email vua xu ly")
+    for c in ("Nhan luc", "Loai", "Diem", "Trang thai", "Tieu de"):
         t.add_column(c)
-    for h in hits[:40]:
-        t.add_row(h.received.strftime("%d/%m %H:%M"), h.kind, ", ".join(h.matched_jos), h.subject[:60])
+    with session_scope() as s:
+        for e in s.execute(select(Email).order_by(Email.id.desc()).limit(20)).scalars():
+            t.add_row(e.received_at.strftime("%d/%m %H:%M") if e.received_at else "", e.category,
+                      str(e.match_score), e.match_status, (e.subject or "")[:60])
     console.print(t)
-    console.print(f"Da {'ap dung' if apply else 'tao Exception cho'} {n} lo hang")
+    console.print(" ".join(f"{k}={v}" for k, v in summary.items()))
+    console.print("Mo web > [cyan]Email Outlook[/] de duyet cac email REVIEW / CONFLICT / UNMATCHED")
 
 
 @app.command()
