@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "booking-control"
-version = "3.0.0"
+version = "3.3.0"
 description = "Web noi bo quan ly Export Shipment & Booking: luoi Follow Up 47 cot giong Excel, phan quyen Admin/Quan ly/Nguoi dung, phan cong lo hang, xuat Excel, Automation Engine (deadline, Planning, HS Code, Outlook)."
 readme = "README.md"
 requires-python = ">=3.10"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 
+from .. import __version__
 from ..db import session_scope
 from ..db.models import Notification
 from .auth import COOKIE_NAME, ROLE_LABELS, LoginThrottle, Principal, load_session
@@ -126,6 +128,25 @@ def unread_count(p: Principal) -> int:
         return int(s.execute(stmt).scalar_one())
 
 
+# Dau van tay cua thu muc static: gan vao duong dan CSS / JS de trinh duyet tai lai file
+# moi sau khi cap nhat phan mem. Dung ban than noi dung file (mtime + kich thuoc) chu khong
+# dung so phien ban, vi sua file ma quen tang phien ban thi nguoi dung se ke't dinh ban cu.
+_ASSET_V: str | None = None
+
+
+def asset_version() -> str:
+    global _ASSET_V
+    if _ASSET_V is None:
+        static = Path(__file__).parent / "static"
+        parts = []
+        for f in sorted(static.glob("*.*")):          # bo qua vendor/ (khong doi)
+            st = f.stat()
+            parts.append(f"{f.name}:{int(st.st_mtime)}:{st.st_size}")
+        digest = hashlib.sha1("|".join(parts).encode("utf-8")).hexdigest()[:10]
+        _ASSET_V = f"{__version__}-{digest}"
+    return _ASSET_V
+
+
 def render(request: Request, template: str, status_code: int = 200, **kw) -> HTMLResponse:
     eng = CTX["engine"]
     sched = CTX["scheduler"]
@@ -135,11 +156,15 @@ def render(request: Request, template: str, status_code: int = 200, **kw) -> HTM
         "app_name": eng.settings.app.name if eng else "Booking Control",
         "status_meta": STATUS_META,
         "nav": template.replace(".html", ""),
+        "nav_override": "",
         "now": dt.datetime.now(),
         "state": sched.state if sched else None,
         "me": p,
         "csrf": p.csrf if p else "",
         "role_labels": ROLE_LABELS,
         "unread": unread_count(p) if p else 0,
+        # Gan vao duong dan CSS / JS: cap nhat phan mem -> trinh duyet tai lai file moi
+        # thay vi dung ban cu trong cache.
+        "asset_v": asset_version(),
     }
     return TEMPLATES.TemplateResponse(request, template, {**base, **kw}, status_code=status_code)

@@ -21,23 +21,24 @@ version: 1
 # Chi sinh task cho lo co EX-FACT trong khoang nay (tranh sinh task cho lo cu)
 generate_window_days: [-30, 75]
 
+# owner = bo phan chiu trach nhiem nop loai chung tu do (SRSv4 muc 68, bang Document Matrix)
 document_types:
-  - { code: BOOKING,        label: "Booking / Booking Confirmation" }
-  - { code: INVOICE,        label: "Invoice" }
-  - { code: PKL,            label: "Packing List (Final PKL)" }
-  - { code: SI,             label: "Shipping Instruction (SI)" }
-  - { code: VGM,            label: "VGM" }
-  - { code: CLP,            label: "Container Load Plan (CLP)" }
-  - { code: DO_DIA,         label: "DO DIA" }
-  - { code: E_SHIPMENT,     label: "E-Shipment" }
-  - { code: EXPORT_DECL,    label: "Tờ khai xuất khẩu" }
-  - { code: BK,             label: "BK" }
-  - { code: DRAFT_BILL,     label: "Draft Bill / FCR" }
-  - { code: CO,             label: "CO (Draft)" }
-  - { code: FINAL_CO,       label: "Final CO" }
-  - { code: PNK,            label: "PNK" }
-  - { code: BL,             label: "Final Bill / Surrender Bill" }
-  - { code: DEBIT_NOTE,     label: "Debit Note" }
+  - { code: BOOKING,        label: "Booking / Booking Confirmation", owner: "Người phụ trách lô" }
+  - { code: INVOICE,        label: "Invoice", owner: "Kế toán / SSC" }
+  - { code: PKL,            label: "Packing List (Final PKL)", owner: "Kho" }
+  - { code: SI,             label: "Shipping Instruction (SI)", owner: "Người phụ trách lô" }
+  - { code: VGM,            label: "VGM", owner: "Kho" }
+  - { code: CLP,            label: "Container Load Plan (CLP)", owner: "Kho" }
+  - { code: DO_DIA,         label: "DO DIA", owner: "Người phụ trách lô" }
+  - { code: E_SHIPMENT,     label: "E-Shipment", owner: "Người phụ trách lô" }
+  - { code: EXPORT_DECL,    label: "Tờ khai xuất khẩu", owner: "Khai báo hải quan" }
+  - { code: BK,             label: "BK", owner: "Khai báo hải quan" }
+  - { code: DRAFT_BILL,     label: "Draft Bill / FCR", owner: "Forwarder" }
+  - { code: CO,             label: "CO (Draft)", owner: "Chứng từ" }
+  - { code: FINAL_CO,       label: "Final CO", owner: "Chứng từ" }
+  - { code: PNK,            label: "PNK", owner: "Kho" }
+  - { code: BL,             label: "Final Bill / Surrender Bill", owner: "Forwarder" }
+  - { code: DEBIT_NOTE,     label: "Debit Note", owner: "Kế toán" }
 
 # Ten file chuan hoa khi luu (SRSv4 muc 58): {NO} {JO} {DOC} {BUYER} {VERSION}
 naming: "{REF}_{DOC}_v{VERSION}"
@@ -51,6 +52,8 @@ document_rules:
   - { buyer: ["IKEA"], forwarder: ["FWD-OCEAN-1"], required: [DO_DIA] }
 
 # Han chung tu (neu khong khai -> theo task dung no, hoac EX-FACT)
+# DEADLINE MATRIX phan chung tu (SRSv4 muc 20 va bang 3 cua muc 68)
+#   anchor: EXFTY (ngay xuat) hoac ETD (ngay tau chay) · offset: so ngay, am la truoc
 document_deadlines:
   BOOKING:     { anchor: EXFTY, offset: -14 }
   INVOICE:     { anchor: EXFTY, offset: -3 }
@@ -63,6 +66,13 @@ document_deadlines:
   BL:          { anchor: ETD, offset: 5 }
   CO:          { anchor: ETD, offset: 3 }
   FINAL_CO:    { anchor: ETD, offset: 10 }
+  # Sau ngay xuat (SRSv4 muc 20, SRSv5 Appendix B): D+1 PNK, sau ATD la Bill / CO
+  DO_DIA:         { anchor: EXFTY, offset: -2 }
+  E_SHIPMENT:     { anchor: EXFTY, offset: -1 }
+  BK:             { anchor: ETD, offset: 2 }
+  PNK:            { anchor: EXFTY, offset: 1 }
+  SURRENDER_BILL: { anchor: ETD, offset: 12 }
+  DEBIT_NOTE:     { anchor: ETD, offset: 15 }
 
 steps:
   - { code: "B1",    name: "Shipment Schedule - tạo lô",                 anchor: EXFTY, offset: -20, auto_done: [shipment_created] }

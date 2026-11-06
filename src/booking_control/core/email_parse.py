@@ -169,6 +169,29 @@ def extract_fields(text: str, alias_index: dict[str, str], ref: dt.date) -> dict
     return out
 
 
+def normalize_extracted(raw: dict[str, str], ref: dt.date) -> dict[str, Any]:
+    """Chuan hoa gia tri do Parser Profile bat duoc (BR-020).
+
+    Pattern cua Forwarder tra ve chuoi tho; ham nay dua ve cung dang voi extract_fields
+    (ngay -> ISO, booking no -> IN HOA) de hai nguon so sanh duoc voi nhau.
+    """
+    out: dict[str, Any] = {}
+    for fld, value in (raw or {}).items():
+        text = str(value or "").strip(" .;:#")
+        if not text:
+            continue
+        if fld in ("etd", "eta"):
+            d = parse_mail_date(text, ref)
+            if d is None:
+                continue
+            out[fld] = d.isoformat()
+        elif fld == "booking_no":
+            out[fld] = text.split()[0].upper()
+        else:
+            out[fld] = text
+    return out
+
+
 # Truong so sanh email vs PDF (khac nhau -> CONFLICT, SRSv5 muc 23)
 COMPARE_FIELDS = ("booking_no", "etd", "eta", "vessel", "voyage", "cy_cutoff", "si_vgm_cutoff", "closing_time")
 

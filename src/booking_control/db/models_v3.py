@@ -280,3 +280,103 @@ class WorkflowTask(Base):
     note: Mapped[str] = mapped_column(Text, default="")
     manual_due: Mapped[bool] = mapped_column(Boolean, default=False)
     manual_status: Mapped[bool] = mapped_column(Boolean, default=False)  # nguoi dung da doi tay -> khong tu dong
+
+
+class ImportProfile(Base):
+    """Bo map cot cho file Excel NGOAI (vd "GARMENT SHIPMENT SCHEDULE" 61 cot).
+
+    File ngoai co hang tram cot, phan lon khong lien quan; nguoi dung chi chon vai cot
+    can dung roi luu lai thanh "bo map" de lan sau nhap mot phat, khong phai chon lai.
+    Cot duoc ghi theo VI TRI (chi so cot) chu khong theo ten tieu de, vi nhieu file co
+    tieu de lech so voi du lieu ben duoi.
+    """
+
+    __tablename__ = "import_profiles"
+    __table_args__ = (UniqueConstraint("name", name="uq_import_profile_name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    sheet_name: Mapped[str] = mapped_column(String(160), default="")
+    header_row: Mapped[int] = mapped_column(Integer, default=1)
+    # {"6": "JO", "25": "ExFtyDate", ...}  chi so cot (1-based) -> truong chuan
+    mapping: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    # Tieu de da thay luc tao bo map, de canh bao khi file doi cau truc
+    headers_seen: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(80), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    used_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+    use_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class JoGoLink(Base):
+    """Quan he JO - GO (SRSv5.1 muc 5): mot GO lien quan nhieu JO.
+
+    SRS: "Khong nen chi luu GO duoi dang text trong Shipment". Bang nay cho phep tra
+    cuu hai chieu va ghi ro quan he den TU DAU (file Excel, suy ra tu ma goc, hay
+    nguoi dung tu noi) - de nguoi dung biet cho nao chac chan, cho nao chi la de xuat.
+    """
+
+    __tablename__ = "jo_go_links"
+    __table_args__ = (
+        UniqueConstraint("jo", "go", name="uq_jo_go"),
+        Index("ix_jogo_jo", "jo"),
+        Index("ix_jogo_go", "go"),
+        Index("ix_jogo_core", "core"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    jo: Mapped[str] = mapped_column(String(120))
+    go: Mapped[str] = mapped_column(String(120))
+    core: Mapped[str] = mapped_column(String(120), default="")   # phan ma dung chung
+    source: Mapped[str] = mapped_column(String(16), default="IMPORT")  # IMPORT|SYSTEM_RULE|USER
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    confirmed_by: Mapped[str] = mapped_column(String(80), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class ExportShipmentGroup(Base):
+    """Export Shipment Group (SRSv5.1 muc 2-4): nhieu lo cung ngay xuat gom lai.
+
+    Dieu kien gom: BUYER + EX-FACT DATE + DEST + MODE.
+
+    LUU Y: nhom KHONG phai booking. Mot nhom co the ung voi 1 hoac nhieu booking, va
+    he thong khong duoc tu ket luan ca nhom chac chan di chung mot booking
+    (SRSv5.1 muc 3). Bang nay chi tong hop va de xuat.
+    """
+
+    __tablename__ = "export_shipment_groups"
+    __table_args__ = (
+        UniqueConstraint("group_key", name="uq_export_group_key"),
+        Index("ix_export_group_exfty", "exfty_date"),
+        Index("ix_export_group_buyer", "buyer_code"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    group_key: Mapped[str] = mapped_column(String(32))
+    label: Mapped[str] = mapped_column(String(200), default="")
+
+    # Bon truong dinh nghia nhom
+    buyer_code: Mapped[str] = mapped_column(String(80), default="")
+    exfty_date: Mapped[dt.date | None] = mapped_column(Date)
+    destination: Mapped[str] = mapped_column(String(120), default="")
+    ship_mode: Mapped[str] = mapped_column(String(20), default="")
+
+    # Tong hop - nhan vien khong phai cong tay (SRSv5.5 muc 4)
+    shipment_count: Mapped[int] = mapped_column(Integer, default=0)
+    jo_count: Mapped[int] = mapped_column(Integer, default=0)
+    go_count: Mapped[int] = mapped_column(Integer, default=0)
+    total_pcs: Mapped[float] = mapped_column(Float, default=0.0)
+    total_ctns: Mapped[float] = mapped_column(Float, default=0.0)
+    total_gross_weight: Mapped[float] = mapped_column(Float, default=0.0)
+    total_cbm: Mapped[float] = mapped_column(Float, default=0.0)
+    missing_cbm: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Container du kien cho ca nhom (tinh tu tong CBM)
+    container_plan: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    booking_numbers: Mapped[dict[str, Any]] = mapped_column(JSON, default=list)
+    details: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # danh sach JO / GO
+
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

@@ -292,3 +292,97 @@ Document Matrix, Email Pattern / Confidence, Outlook Inbox, Workflow B1–B15.1 
 | AI / OCR ảnh scan | PDF không có lớp chữ báo `NO_TEXT` → người duyệt; chỗ mở rộng: `integrations/pdf_text.py` |
 | Microsoft Graph / thư mục .eml | Chỉ Outlook desktop theo yêu cầu; phần xử lý độc lập nguồn email |
 | Tự gửi email booking / form booking | SRS khuyến nghị không tự gửi email; hệ thống đọc email người dùng gửi (Sent Items) để nhớ Conversation |
+
+---
+
+## 18. Yêu cầu v3.2 (SRS v5.1 → v5.5)
+
+| Yêu cầu | Thực hiện | Test |
+|---|---|---|
+| **Status, Color và Deadline Warning là ba khái niệm độc lập** (v5.1 §1) · Màu UI không phải Business Status (BR-013) | `shipment_service.business_status()` ghép từ `booking_status` / `hold_status` / `ship_status`; `effective_status` chỉ còn là lớp màu; cột mới `shipments.deadline_warning`. Trang lô hàng hiện cả ba trục cạnh nhau | `test_v51_group_jogo_warning.py` |
+| Cảnh báo viền đỏ: chưa book và còn dưới 14 ngày (v5.1 §16) | `core/deadline.booking_warning()` — ngưỡng lấy từ `deadlines.booking_window.end_days_before`, không hard-code; lưới tô **viền** đỏ (nền vẫn là màu trạng thái) | `test_booking_warning_follows_srs_table` (9 mốc D-20…D+1) · `test_warning_threshold_is_configurable` |
+| Cảnh báo tính từ Business Status chứ không từ màu | `engine._evaluate_status` truyền `booked=sh.booking_status not in (NOT_BOOKED, CANCELLED)` | `test_booked_shipment_never_warns` · `test_closed_shipment_never_warns` |
+| Lọc theo cảnh báo hạn và theo trạng thái nghiệp vụ | `apply_filters` nhận `warn=` và `biz=`; ô tick trên lưới; link từ Dashboard | kiểm thử trình duyệt |
+| **Quan hệ JO – GO** — "không nên chỉ lưu GO dưới dạng text" (v5.1 §5, v5.4 §8) | `core/jogo.py` + bảng `jo_go_links` (jo, go, core, source, confidence). Quy tắc tách mã gốc trong `field_mapping.yaml › jo_go`, không hard-code | `test_jo_go_example_from_srs` (đúng ví dụ 26V02426KR01/02 ↔ S26V02426) |
+| Nguồn quan hệ: IMPORT / SYSTEM_RULE / USER | Cùng dòng Excel → `IMPORT` (tin cậy 1.0); cùng mã gốc → `SYSTEM_RULE` (0.8, đánh dấu `?` trên giao diện); quan hệ do người dùng nối không bị Automation ghi đè | `test_second_jo_is_linked_even_when_its_row_has_no_go` · `test_unrelated_codes_are_not_linked` |
+| **Export Shipment Group** — Shipment / Group / Booking là ba đối tượng khác nhau (v5.1 §2-4, v5.4 §6-7) | `core/export_group.py` + bảng `export_shipment_groups` + cột `shipments.export_group_key`; gom theo **BUYER + EX-FACT DATE + DEST + MODE**; trang `/groups` và `/groups/{key}` | `test_group_key_uses_all_four_fields` |
+| Nhóm tự cộng tổng, nhân viên không phải cộng tay (v5.5 §4) | Tổng PCS / CTNS / G.W / CBM, đếm JO, đếm GO, container dự kiến cho cả nhóm (dùng lại `plan_containers`) | `test_group_totals_match_srs_example` (đúng ví dụ 25 JO · 3 GO · 149.10 CBM) |
+| Nhóm **không** đồng nghĩa với một Booking (v5.1 §3) | Nhóm chỉ tổng hợp và liệt kê các booking đang có, không tự tạo/gộp booking; trang nhóm ghi rõ khi một nhóm nằm trên nhiều booking | `test_group_collects_booking_numbers_but_does_not_merge_them` |
+| Không giới hạn số JO/GO trong một nhóm | Không có ngưỡng cứng trong code (ví dụ 25 JO của SRS chỉ là một trường hợp) | `test_group_totals_match_srs_example` |
+| Thiếu CBM thì không đoán bừa | Đếm riêng `missing_cbm`, container chuyển `NEED_REVIEW`, giao diện báo "tổng chưa đủ" | `test_missing_cbm_is_counted_not_guessed` |
+| **"Exception Only"** — hệ thống rà hết, người dùng chỉ nhìn việc cần làm (v5.5 §10) | `services/exception_queue.py` + khối đầu Dashboard, đủ 8 loại của SRS: booking quá hạn · email ≠ PDF · thiếu CBM · booking bị hủy · cần rebook · thiếu chứng từ · phân bổ chưa đủ · ngày xuất vừa đổi. Mỗi mục bấm vào là ra đúng danh sách | kiểm thử trình duyệt |
+
+### Điểm mâu thuẫn trong tài liệu — chưa đổi, chờ chốt
+
+SRS v5.1 §19 liệt kê `NOT_BOOKED`→White, `BOOKING`→**Green**, `DELAY`→**Yellow**.
+SRS v5 §16 và mô tả gốc lại quy định: Vàng = đã booking nhưng **thiếu thông tin**, Xanh lá = **đủ CDF + BL**.
+
+Hai cách hiểu khác hẳn nhau. Code đang theo **v5 §16 + mô tả gốc** (đã có test và đang chạy đúng).
+Phần kiến trúc mà cả hai bản đều thống nhất — *màu không phải business status* — thì đã làm (xem dòng đầu bảng trên).
+Nếu chốt theo v5.1 §19, chỗ cần sửa là `core/status.py` và `config/config.yaml › status.colors`.
+
+---
+
+## 19. Yêu cầu v3.3 — 5 bảng xương sống (SRSv4 §68)
+
+SRSv4 §68 nêu năm bảng *"mới là xương sống của hệ thống"* và cảnh báo: *"Nếu chỉ dựa vào file Follow Up Excel để code thì hệ thống sẽ nhanh chóng trở nên rất khó bảo trì khi Buyer hoặc Forwarder thay đổi quy trình."*
+
+| Bảng | Yêu cầu | Thực hiện | Test |
+|---|---|---|---|
+| **1 · Buyer × Forwarder** (§14, §68) | Buyer + Mode + Destination + Effective Date + Forwarder + **Service** + **Booking Rule** + **Email Parser** | `core/forwarder.ForwarderRule` thêm `service`, `booking_rule`, `parser`, `note`; `config/buyer_rules.yaml › forwarder_rules` khai đủ cột | `test_forwarder_rule_has_all_srs_columns` |
+| | "Không được thiết kế Buyer → một Forwarder cố định" | Rule chọn theo buyer + mode + dest + port + khoảng ngày xuất; nhiều rule khớp → `NEED_CONFIRM`, không tự chọn (§16) | `test_one_buyer_can_have_many_forwarders` · `test_forwarder_case_a…d` |
+| **2 · Email Pattern** (§15, §26, BR-020) | "Không dùng một parser cho tất cả" — mỗi Forwarder một Parser Profile: sender, domain, subject, body, attachment, booking no, JO, ETD, vessel, closing time | `core/parser_profile.py` — profile theo domain/sender, `patterns` cho 14 trường, `subject_must`, `attachment_pattern`. Wired vào `email_service.resolve_profile` | `test_forwarder_pattern_beats_generic_alias` · `test_subject_gate` |
+| | Một Forwarder nhiều nhân viên, mỗi người một format (SRSv5 §25) | `contacts:` lồng trong profile; ưu tiên **mẫu nhân viên → mẫu Forwarder → alias chung** | `test_contact_pattern_beats_forwarder_pattern` · `test_contact_inherits_forwarder_aliases` |
+| | Cấu hình sai phải phát hiện sớm | Pattern thiếu nhóm bắt giá trị / sai cú pháp / trường lạ → lỗi ngay lúc nạp, không phải lúc chạy | `test_bad_pattern_is_rejected_at_load_not_at_runtime` |
+| **3 · Deadline** (§20, §21) | D-20 · D-14 · D-7 · D-3 · D-1 · D0 · D+1 · ETD+1 · sau ATD — tất cả configurable | `config.yaml › deadlines` (trước ngày xuất) + `workflow.yaml › document_deadlines` (sau ngày xuất). Bổ sung PNK (EX-FACT+1), BK (ETD+2), SURRENDER_BILL (ETD+12), DEBIT_NOTE (ETD+15), DO_DIA, E_SHIPMENT | `test_broken_booking_window_is_reported` |
+| **4 · Document** (§68 bảng 4) | Mode · Buyer · Forwarder · Required Document · Deadline · **Owner** | `workflow.yaml › document_types` thêm `owner` cho cả 16 loại; `workflow_service.checklist` trả kèm owner | `test_every_document_has_owner_and_deadline` |
+| **5 · Field Ownership** (§35, §68 bảng 5) | 47 cột · Source · Editable by User · Editable by Manager · Auto Update · **Override Rule** | `followup_template.yaml › columns` đã có `source`/`user`/`manager`/`auto`; quy tắc ghi đè suy ra và hiển thị thành câu | `test_every_field_states_who_can_edit` |
+| **Kiểm tra chéo 5 bảng** | — (SRS không nêu, nhưng lỗi thật nằm ở chỗ nối giữa các bảng) | `services/matrices.py` — rule trỏ parser không tồn tại, profile không ai dùng, chứng từ thiếu hạn/owner, cột không ai sửa được, cửa sổ booking ngược… | `test_shipped_config_has_no_errors` · `test_parser_reference_must_exist` |
+| **Trang xem** | — | `/matrices` — 5 tab + bảng cảnh báo, ghi rõ mỗi bảng sửa ở file nào. Quyền `rules.view` (Admin · Quản lý · Auditor) | `test_all_five_tables_are_populated` |
+
+Nguồn vẫn là các file YAML trong `config/` chứ không đưa vào database — để thay đổi còn vào được git, review được và quay lui được.
+
+---
+
+## 19. 5 bảng xương sống (SRSv4 §68) — `/admin/matrices`
+
+SRS gọi đây là xương sống và yêu cầu chốt trước khi code: *“Nếu chỉ dựa vào file Follow Up Excel để code thì hệ thống sẽ nhanh chóng trở nên rất khó bảo trì khi Buyer hoặc Forwarder thay đổi quy trình.”*
+
+| # | Bảng | Cấu hình ở đâu | Cột theo SRS | Trạng thái |
+|---|---|---|---|---|
+| 1 | Buyer × Forwarder | `config/buyer_rules.yaml › forwarder_rules` | Buyer · Mode · Destination · Effective Date · Forwarder · **Service** · **Booking Rule** · **Email Parser** | Đủ — 3 cột in đậm mới bổ sung (`core/forwarder.py`) |
+| 2 | Email Pattern | `config/email_profiles.yaml › forwarders` | Forwarder · Sender · Subject · Keyword · Attachment · Field Mapping | Đủ — `core/parser_profile.py` mới, có cả profile riêng cho **từng nhân viên** của một Forwarder |
+| 3 | Deadline | `config/config.yaml › deadlines` + `workflow.yaml › document_deadlines` | D-20 · D-14 · D-7 · D-3 · D-1 · sau ngày xuất | Đủ — mốc sau ngày xuất nằm ở hạn chứng từ (ETD+n), không khai trùng |
+| 4 | Document | `config/workflow.yaml › document_*` | Mode · Buyer · Forwarder · Required Document · Deadline · **Owner** | Đủ — cột Owner mới bổ sung cho 15 loại chứng từ |
+| 5 | Field Ownership | `config/followup_template.yaml › columns` | 47 fields · Source · User · Manager · Auto Update · Override Rule | Đủ từ v2 |
+
+### Parser Profile theo Forwarder (BR-020)
+
+SRSv4 §15: *“Không dùng một parser cho tất cả”*. SRSv5 §25: một Forwarder có nhiều nhân viên, mỗi người một format.
+
+```
+Email → sender/domain → Forwarder Profile → địa chỉ cụ thể → Contact Profile → đọc dữ liệu
+```
+
+Thứ tự ưu tiên: **mẫu của nhân viên > mẫu của Forwarder > alias chung**. Cấu hình sai (trường lạ, regex hỏng, thiếu nhóm bắt giá trị) bị từ chối **ngay lúc nạp**, không đợi tới lúc xử lý email thật.
+
+| Thực hiện | Test |
+|---|---|
+| `core/parser_profile.py` · `email_parse.normalize_extracted` · `email_service.resolve_profile` | `test_matrices.py` — 10 test parser |
+
+### Kiểm tra chéo giữa các bảng
+
+Giá trị lớn nhất của trang không phải là hiển thị bảng, mà là bắt **chỗ các bảng không khớp nhau** — loại lỗi không báo ngay, chỉ âm thầm làm tự động hóa bỏ sót:
+
+| Kiểm tra | Mức |
+|---|---|
+| Rule Buyer × Forwarder trỏ tới parser không tồn tại | Lỗi |
+| Parser Profile không khai domain lẫn sender → không bao giờ khớp email nào | Lỗi |
+| Chứng từ bị yêu cầu nhưng không có trong `document_types` | Lỗi |
+| Forwarder có rule nhưng chưa có bộ đọc email | Cảnh báo |
+| Nhiều rule cùng khớp một Buyer (BR-007 — hệ thống phải hỏi, không tự chọn) | Cảnh báo |
+| Chứng từ bắt buộc nhưng chưa ghi ai chịu trách nhiệm | Cảnh báo |
+| Cột nguồn OUTLOOK nhưng `auto: false` → email về không điền được | Cảnh báo |
+
+Cài đặt: `services/matrices.py` (tách khỏi tầng web để test được) · `web/routes_matrix.py` · `templates/matrices.html`.
+Test: `tests/test_matrices.py` — 16 test.

@@ -68,16 +68,51 @@ field_aliases:
 
 # Forwarder: nhan dien theo dia chi / ten mien nguoi gui. Moi forwarder co the them alias rieng
 # (nhieu nhan vien, moi nguoi 1 kieu viet - SRSv5 muc 25-26). Ten duoi day la vi du.
+# EMAIL PATTERN MATRIX / PARSER PROFILE  (SRSv4 muc 15 va bang 2 cua muc 68, BR-020)
+#
+# "Khong dung mot parser cho tat ca". Moi Forwarder khai bo mau rieng; moi NHAN VIEN cua
+# Forwarder do co the khai rieng nua (mot nguoi gui mot kieu - SRSv5 muc 25).
+#
+#   domains / senders  nhan ra email den tu ai
+#   subject_must       chi ap profile khi tieu de co mot trong cac tu nay
+#   field_aliases      nhan cot "VSL:" -> vessel
+#   patterns           bieu thuc chinh quy rieng; PHAI co nhom bat gia tri (?P<v>...)
+#   attachment_pattern ten file dinh kem cua Forwarder nay
+#   contacts           profile rieng cho tung nhan vien, de len tren profile Forwarder
+#
+# Truong duoc phep dat pattern: booking_no, jo, go, po, etd, eta, vessel, voyage,
+#                               cy_cutoff, si_vgm_cutoff, closing_time, port,
+#                               container_no, seal_no
+#
+# Thu tu uu tien khi lay mot truong:  pattern cua nhan vien > pattern Forwarder > alias chung.
 forwarders:
   - name: "FWD-OCEAN-1"
     domains: ["fwd-ocean1.example.com"]
     field_aliases:
       cy_cutoff: ["cy closing date/time"]
+    patterns:
+      booking_no: 'BOOKING\s*(?:NO|#)?\s*[:.]?\s*(?P<v>[A-Z]{2,4}[0-9]{6,})'
+    attachment_pattern: '(?i)booking.*\.pdf$'
+  - name: "FWD-OCEAN-2"
+    domains: ["fwd-ocean2.example.com"]
+    patterns:
+      booking_no: 'BKG\s*NO\.?\s*(?P<v>[A-Z0-9]{8,})'
   - name: "FWD-AIR-1"
     domains: ["fwd-air1.example.com"]
+    patterns:
+      booking_no: 'AWB\s*[:.]?\s*(?P<v>[0-9]{3}-?[0-9]{8})'
   - name: "FWD-KR-1"
     domains: ["fwd-kr1.example.com"]
     senders: ["booking.kr@fwd-kr1.example.com"]
+    patterns:
+      booking_no: 'BKG\s*[:#]?\s*(?P<v>[A-Z0-9-]{6,})'
+      vessel: 'VSL\s*[:/]\s*(?P<v>[A-Z0-9 .-]+?)\s*(?:V\.|VOY|$)'
+    contacts:
+      # Mot nhan vien cua FWD-KR-1 ghi so booking theo kieu khac
+      - name: "Mary (FWD-KR-1)"
+        senders: ["mary@fwd-kr1.example.com"]
+        patterns:
+          booking_no: 'Our\s+ref\.?\s*(?P<v>[A-Z0-9-]{6,})' 
 
 # Email noi bo (Sent Items) gui yeu cau booking -> tao booking REQUESTED + ghi nho Conversation
 internal_domains: ["company.com"]

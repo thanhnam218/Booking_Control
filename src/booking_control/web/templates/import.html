@@ -18,7 +18,7 @@
 <div class="card">
   <h3>{{ 'Đã nhập' if applied else 'Xem trước' }}: {{ filename }}</h3>
   <p>{{ result.sheets }} sheet Follow Up &middot; <b>{{ result.rows }}</b> lô &middot;
-    <b>{{ result.new }}</b> thêm mới &middot; <b>{{ result.update }}</b> cập nhật
+    <b>{{ result.new }}</b> thêm mới &middot; <b>{{ result['update'] }}</b> cập nhật
     {% if applied and result.auto_assigned is defined %}&middot; tự phân công {{ result.auto_assigned }}{% endif %}</p>
   {% for e in result.errors %}<div class="flash err">{{ e }}</div>{% endfor %}
   {% if not applied and result.rows %}

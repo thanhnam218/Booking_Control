@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 
 from ..audit import log_audit
 from ..db import session_scope
-from ..db.models import Shipment, User
+from ..db.models import Shipment, User, utcnow
 from ..services import shipment_service as svc
 from ..services.assignment import AssignmentError, active_users, assign
 from ..services.excel_export import build_workbook, export_filename
@@ -26,7 +26,8 @@ router = APIRouter()
 
 def _filters(request: Request) -> dict[str, Any]:
     q = request.query_params
-    keys = ("assigned", "status", "buyer", "forwarder", "mode", "date_from", "date_to", "q")
+    keys = ("assigned", "status", "biz", "warn", "buyer", "forwarder", "mode",
+            "date_from", "date_to", "q")
     f = {k: q.get(k, "") for k in keys if q.get(k)}
     if q.get("hide_done") in ("1", "true", "yes"):
         f["hide_done"] = True
@@ -66,7 +67,8 @@ def followup_page(request: Request):
         "page_size": cfg.web.grid_page_size,
     }
     return render(request, "followup.html", grid_cfg=grid_cfg, buyers=buyers, users=users,
-                  filters=_filters(request))
+                  filters=_filters(request),
+                  booking_warn_days=cfg.deadlines.booking_window.end_days_before)
 
 
 @router.get("/api/followup/rows")
@@ -180,6 +182,70 @@ def followup_archive(request: Request, body: ArchiveBody):
         ships = list(s.execute(select(Shipment).where(Shipment.shipment_code.in_(body.codes[:2000]))).scalars())
         n = svc.set_archived(s, p, ships, body.archived, body.note)
     return {"changed": n}
+
+
+# ---------------------------------------------------------------------------
+# Dung chung cung luc: keo thay doi cua nguoi khac ve + bao ai dang sua dong nao
+#
+# Ca hai deu la "nhe": khong WebSocket, chi mot lan goi moi vai giay tu trinh duyet.
+# Danh sach nguoi dang xem nam trong bo nho tien trinh may chu (mat khi khoi dong lai,
+# khong chia se giua nhieu worker) - du cho mot phong vai chuc nguoi.
+# ---------------------------------------------------------------------------
+
+PRESENCE_TTL = dt.timedelta(seconds=25)
+_PRESENCE: dict[str, dict[str, Any]] = {}
+
+
+def _presence_sweep(now: dt.datetime) -> None:
+    for name in [n for n, v in _PRESENCE.items() if now - v["at"] > PRESENCE_TTL]:
+        _PRESENCE.pop(name, None)
+
+
+@router.get("/api/followup/changes")
+def followup_changes(request: Request, since: str = "", limit: int = 400):
+    """Dong nao vua doi ke tu `since` (do nguoi khac hoac Automation sua)."""
+    p = current(request)
+    now = utcnow()
+    try:
+        mark = dt.datetime.fromisoformat(since) if since else now - dt.timedelta(minutes=5)
+    except ValueError:
+        mark = now - dt.timedelta(minutes=5)
+    today = dt.date.today()
+    tmpl = engine().template
+    with session_scope() as s:
+        stmt = (svc.apply_filters(svc.visible_stmt(p), _filters(request))
+                .where(Shipment.updated_at.is_not(None), Shipment.updated_at > mark)
+                .order_by(Shipment.updated_at)
+                .limit(max(1, min(limit, 1000))))
+        ships = list(s.execute(stmt).scalars())
+        rows = [svc.grid_row(sh, tmpl, today, settings().status_color) for sh in ships]
+        by = sorted({sh.updated_by for sh in ships if sh.updated_by and sh.updated_by != p.name})
+    return {"now": now.isoformat(timespec="seconds"), "rows": rows, "by": by}
+
+
+class PresenceBody(BaseModel):
+    codes: list[str] = Field(default_factory=list)   # cac dong dang hien tren man hinh
+    editing: str = ""                                # dong dang go do
+
+
+@router.post("/api/followup/presence")
+def followup_presence(request: Request, body: PresenceBody):
+    """Bao may chu "toi dang xem cac dong nay" va nhan lai ai dang sua dong nao."""
+    p = current(request)
+    now = utcnow()
+    _presence_sweep(now)
+    _PRESENCE[p.name] = {"at": now, "label": p.label, "editing": body.editing[:40],
+                         "codes": set(body.codes[:3000])}
+    mine = _PRESENCE[p.name]["codes"]
+    editors: dict[str, str] = {}
+    viewers = 0
+    for name, v in _PRESENCE.items():
+        if name == p.name:
+            continue
+        viewers += 1
+        if v["editing"] and v["editing"] in mine:
+            editors[v["editing"]] = v["label"]
+    return {"editors": editors, "viewers": viewers}
 
 
 # ---------------------------------------------------------------------------

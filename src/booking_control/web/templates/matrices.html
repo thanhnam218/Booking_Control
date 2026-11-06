@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}5 bảng xương sống - {{ app_name }}{% endblock %}
+{% block content %}
+<h2>5 bảng xương sống</h2>
+<p class="page-sub">Theo SRS: <i>“5 bảng này mới là xương sống của hệ thống. Nếu chỉ dựa vào file Follow Up
+  Excel để code thì hệ thống sẽ nhanh chóng trở nên rất khó bảo trì khi Buyer hoặc Forwarder thay đổi quy trình.”</i>
+  <br>Cả năm đều nằm trong file cấu hình — sửa file rồi quét lại, không phải sửa phần mềm.</p>
+
+{% if m.issues %}
+<div class="card mx-issues">
+  <h3>{{ m.issues|length }} điểm cần xem lại
+    {% if m.error_count %}<span class="tag late">{{ m.error_count }} lỗi</span>{% endif %}
+    {% if m.warning_count %}<span class="tag">{{ m.warning_count }} cảnh báo</span>{% endif %}</h3>
+  <p class="muted" style="font-size:12px;margin-top:0">Phần lớn là chỗ các bảng <b>không khớp nhau</b> —
+    loại lỗi không báo ngay, chỉ âm thầm làm tự động hóa bỏ sót.</p>
+  <ul class="mx-list">
+    {% for i in m.issues %}
+      <li class="{{ i.level|lower }}"><span class="bg">{{ i.table }}</span>{{ i.message }}
+        {% if i.fix %}<span class="fix">→ {{ i.fix }}</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% else %}
+<div class="flash ok">Năm bảng khớp nhau, không thấy điểm nào vênh.</div>
+{% endif %}
+
+<div class="tabs" id="mx-tabs">
+  <a href="#" class="on" data-tab="fw">1 · Buyer × Forwarder</a>
+  <a href="#" data-tab="parser">2 · Email Pattern</a>
+  <a href="#" data-tab="deadline">3 · Deadline</a>
+  <a href="#" data-tab="doc">4 · Chứng từ</a>
+  <a href="#" data-tab="field">5 · Quyền cột</a>
+</div>
+
+<!-- ===================== 1. BUYER x FORWARDER ===================== -->
+<section data-pane="fw">
+<div class="card scroll-x">
+  <h3>Buyer × Forwarder <span class="muted mono">config/buyer_rules.yaml › forwarder_rules</span></h3>
+  <p class="muted" style="font-size:12px">Một Buyer có thể có nhiều Forwarder — phân biệt theo mode, cảng đến,
+    cảng đi và khoảng ngày hiệu lực. Hai dòng cùng khớp thì hệ thống <b>hỏi</b> chứ không tự chọn.</p>
+  <table class="gtable">
+    <thead><tr><th>Buyer</th><th>Mode</th><th>Dest</th><th>Port</th><th>Hiệu lực</th>
+      <th>Forwarder</th><th>Dịch vụ</th><th>Quy tắc booking</th><th>Bộ đọc email</th></tr></thead>
+    <tbody>
+    {% for r in m.buyer_forwarder %}
+      <tr>
+        <td>{{ r.buyer|join(', ') }}</td>
+        <td>{{ r.mode|join(', ') }}</td>
+        <td>{{ r.dest|join(', ') }}</td>
+        <td>{{ r.port|join(', ') or '*' }}</td>
+        <td class="mono nowrap">{{ r.effective }}</td>
+        <td><b>{{ r.forwarder }}</b></td>
+        <td>{{ r.service or '—' }}</td>
+        <td class="muted">{{ r.booking_rule or '—' }}</td>
+        <td>{% if not r.parser %}<span class="tag late">chưa có</span>
+            {% elif r.parser_ok %}<span class="ctag">{{ r.parser }}</span>
+            {% else %}<span class="tag late" title="Không tìm thấy profile này trong email_profiles.yaml">{{ r.parser }} ✗</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% for r in m.buyer_forwarder if r.note %}
+    <p class="muted" style="font-size:11.5px;margin:2px 0">{{ r.forwarder }}: {{ r.note }}</p>
+  {% endfor %}
+</div>
+</section>
+
+<!-- ===================== 2. EMAIL PATTERN ===================== -->
+<section data-pane="parser" hidden>
+<div class="card scroll-x">
+  <h3>Email Pattern <span class="muted mono">config/email_profiles.yaml › forwarders</span></h3>
+  <p class="muted" style="font-size:12px">Mỗi Forwarder một bộ đọc riêng; một Forwarder có nhiều nhân viên,
+    mỗi người viết một kiểu nên khai được profile con. <b>Mẫu của nhân viên thắng mẫu của Forwarder.</b></p>
+  <table class="gtable">
+    <thead><tr><th>Profile</th><th>Domain / người gửi</th><th>Chỉ khi tiêu đề có</th>
+      <th>Nhãn cột</th><th>Mẫu bắt giá trị</th><th>File đính kèm</th></tr></thead>
+    <tbody>
+    {% for p in m.email_patterns %}
+      <tr>
+        <td><b>{{ p.name }}</b>
+          {% if not p.in_use %}<span class="tag" title="Không rule Buyer × Forwarder nào trỏ tới">chưa dùng</span>{% endif %}
+          {% if p.contacts %}<div class="muted" style="font-size:11px">{{ p.contacts|length }} nhân viên khai riêng</div>{% endif %}</td>
+        <td class="mono" style="font-size:11px">
+          {% for d in p.domains %}{{ d }}<br>{% endfor %}
+          {% for s in p.senders %}{{ s }}<br>{% endfor %}
+          {% if not p.domains and not p.senders %}<span class="tag late">chưa khai</span>{% endif %}</td>
+        <td class="muted">{{ p.subject_must|join(', ') or '—' }}</td>
+        <td class="mono" style="font-size:11px">
+          {% for k, v in p.aliases.items() %}{{ k }} ← {{ v|join(' / ') }}<br>{% else %}—{% endfor %}</td>
+        <td class="mono" style="font-size:11px">
+          {% for k, v in p.patterns.items() %}<b>{{ k }}</b> {{ v }}<br>{% else %}—{% endfor %}</td>
+        <td class="mono" style="font-size:11px">{{ p.attachment or '—' }}</td>
+      </tr>
+      {% for c in p.contacts %}
+        <tr class="contact-row">
+          <td><span class="muted">↳</span> <b>{{ c.name }}</b>
+            <div class="muted" style="font-size:11px">nhân viên của {{ p.name }}</div></td>
+          <td class="mono" style="font-size:11px">{% for s in c.senders %}{{ s }}<br>{% endfor %}</td>
+          <td class="muted">{{ c.subject_must|join(', ') or '—' }}</td>
+          <td class="mono" style="font-size:11px">
+            {% for k, v in c.aliases.items() %}{{ k }} ← {{ v|join(' / ') }}<br>{% else %}—{% endfor %}</td>
+          <td class="mono" style="font-size:11px">
+            {% for k, v in c.patterns.items() %}<b>{{ k }}</b> {{ v }}<br>{% else %}—{% endfor %}</td>
+          <td class="mono" style="font-size:11px">{{ c.attachment or '—' }}</td>
+        </tr>
+      {% endfor %}
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+</section>
+
+<!-- ===================== 3. DEADLINE ===================== -->
+<section data-pane="deadline" hidden>
+<div class="card scroll-x">
+  <h3>Deadline <span class="muted mono">config/config.yaml › deadlines · workflow.yaml › document_deadlines</span></h3>
+  <p class="muted" style="font-size:12px;margin-top:0">Quét Follow Up mỗi <b>{{ scan_hours }} giờ</b> &middot;
+    chỉ gửi thông báo trong khung <b>{{ window[0] }}–{{ window[1] }}</b> (ngoài khung thì dồn lại, bắn hôm sau).</p>
+  <table class="gtable">
+    <thead><tr><th style="width:110px">Mốc</th><th>Ý nghĩa</th><th>Giá trị đang đặt</th><th>Khai ở đâu</th></tr></thead>
+    <tbody>
+    {% for r in m.deadlines %}
+      <tr><td class="mono"><b>{{ r.moc }}</b></td><td>{{ r.y_nghia }}</td>
+        <td class="mono">{{ r.gia_tri }}</td>
+        <td class="muted mono" style="font-size:11px">{{ r.o_dau }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+</section>
+
+<!-- ===================== 4. CHUNG TU ===================== -->
+<section data-pane="doc" hidden>
+<div class="card scroll-x">
+  <h3>Chứng từ bắt buộc theo Mode / Buyer / Forwarder
+    <span class="muted mono">config/workflow.yaml › document_rules</span></h3>
+  <table class="gtable">
+    <thead><tr><th>Mode</th><th>Buyer</th><th>Forwarder</th><th>Chứng từ bắt buộc — hạn — ai làm</th></tr></thead>
+    <tbody>
+    {% for r in m.documents %}
+      <tr>
+        <td>{{ r.mode }}</td>
+        <td>{{ r.buyer|join(', ') }}</td>
+        <td>{{ r.forwarder|join(', ') }}</td>
+        <td>
+          {% for d in r.required %}
+            <div class="docline">
+              <span class="ctag {{ 'unknown' if not d.known }}">{{ d.code }}</span>
+              <span class="lbl">{{ d.label }}</span>
+              <span class="mono muted">{{ d.deadline or 'theo bước quy trình' }}</span>
+              {% if d.owner %}<span class="own-tag">{{ d.owner }}</span>
+              {% else %}<span class="tag late">chưa ghi ai làm</span>{% endif %}
+            </div>
+          {% endfor %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+</section>
+
+<!-- ===================== 5. QUYEN COT ===================== -->
+<section data-pane="field" hidden>
+<div class="card scroll-x">
+  <h3>Quyền từng cột — {{ m.field_ownership|length }} cột
+    <span class="muted mono">config/followup_template.yaml › columns</span></h3>
+  <p class="muted" style="font-size:12px"><b>sửa → QL xem lại</b> = Nhân viên sửa được nhưng tạo mục để Quản lý duyệt.
+    <b>Tự động</b> = automation được phép điền khi người dùng chưa sửa tay (USER &gt; AUTOMATION).</p>
+  <table class="gtable">
+    <thead><tr><th>Cột</th><th>Tên</th><th>Kiểu</th><th>Nguồn</th>
+      <th>Nhân viên</th><th>Quản lý</th><th>Tự động</th><th>Ghi đè</th></tr></thead>
+    <tbody>
+    {% for f in m.field_ownership %}
+      <tr>
+        <td class="mono">{{ f.letter }}</td>
+        <td>{{ f.label }}{% if f.required %} <span class="req-dot" title="Bắt buộc">*</span>{% endif %}</td>
+        <td class="muted">{{ f.type }}</td>
+        <td><span class="tag">{{ f.source }}</span></td>
+        <td class="own {{ f.user }}">{{ {'edit':'sửa được','review':'sửa → QL xem lại','view':'chỉ xem'}.get(f.user, f.user) }}</td>
+        <td class="own {{ f.manager }}">{{ 'sửa được' if f.manager == 'edit' else 'chỉ xem' }}</td>
+        <td>{{ '✓' if f.auto else '—' }}</td>
+        <td class="muted">{{ f.override }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var tabs = document.querySelectorAll("#mx-tabs a");
+  tabs.forEach(function (a) {
+    a.addEventListener("click", function (e) {
+      e.preventDefault();
+      tabs.forEach(function (x) { x.classList.toggle("on", x === a); });
+      document.querySelectorAll("section[data-pane]").forEach(function (s) {
+        s.hidden = s.getAttribute("data-pane") !== a.getAttribute("data-tab");
+      });
+    });
+  });
+})();
+</script>
+{% endblock %}

@@ -505,3 +505,24 @@ date_parsing:
     - "%d %b %Y"
     - "%b %d, %Y"
   canonical: "%Y-%m-%d"
+
+# =============================================================================
+# QUAN HE JO - GO  (SRSv5.1 muc 5)
+# =============================================================================
+# Mot GO co the gom nhieu JO. He thong nhan ra bang PHAN MA GOC dung chung:
+#
+#     JO 26V02426KR01 ─┐
+#                      ├─ ma goc 26V02426 ─ GO S26V02426
+#     JO 26V02426KR02 ─┘
+#
+# Hai bieu thuc duoi day tach phan ma goc ra khoi JO va GO. Phai co nhom (?P<core>...).
+# Cong ty danh ma kieu khac thi sua o day, KHONG sua code.
+#
+#   jo_pattern  mac dinh: bo duoi <2 chu nuoc><1-3 so>   26V02426KR01 -> 26V02426
+#   go_pattern  mac dinh: bo 1 chu cai dau neu co        S26V02426    -> 26V02426
+#
+# Ma goc ngan hon min_core_len thi bo qua - tha khong noi con hon noi nham.
+jo_go:
+  jo_pattern: '^(?P<core>.+?)[A-Z]{2}\d{1,3}$'
+  go_pattern: '^[A-Z]?(?P<core>.+)$'
+  min_core_len: 4

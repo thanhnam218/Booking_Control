@@ -71,8 +71,9 @@ Quyền **từng cột** (Field Ownership Matrix) nằm trong [`config/followup_
 
 ## Cài đặt nhanh (Windows)
 
+Chép thư mục mã nguồn vào `C:\Tools\booking-control`, rồi mở PowerShell:
+
 ```powershell
-git clone https://github.com/<tài-khoản>/booking-control.git C:\Tools\booking-control
 cd C:\Tools\booking-control
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\scripts\install.ps1            # tạo .venv, cài thư viện, tạo config, tạo Admin, dữ liệu demo
@@ -89,8 +90,9 @@ Chi tiết từng bước, cấu hình file Excel thật, chạy nền khi khở
 
 | Tài liệu | Dành cho |
 |---|---|
-| [INSTALL.md](docs/INSTALL.md) | Cài đặt, máy chủ LAN, tạo tài khoản, trỏ file Excel thật, bật Outlook desktop, thư mục chứng từ, chạy nền, nâng cấp |
-| [USER_GUIDE.md](docs/USER_GUIDE.md) | Người dùng & Quản lý: lưới Follow Up, booking, email Outlook, chứng từ, việc của tôi, Weekly Planning, phân công, xuất/nhập Excel |
+| [SPECIFICATION.md](docs/SPECIFICATION.md) | **Đặc tả hệ thống**: nguyên tắc nền, đối tượng nghiệp vụ, quy tắc màu / deadline / container / công thức, 5 bảng quy tắc, phân quyền, giới hạn đã biết, tiêu chí nghiệm thu |
+| [INSTALL.md](docs/INSTALL.md) | Cài đặt, chạy, tài khoản, trỏ file Excel thật, máy chủ LAN, chạy nền, cấu hình chi tiết, sao lưu, nâng cấp, khắc phục sự cố |
+| [USER_GUIDE.md](docs/USER_GUIDE.md) | Người dùng & Quản lý: một ngày làm việc, lưới Follow Up, gõ công thức, booking, nhóm lô xuất, email Outlook, chứng từ, phân công, nhập/xuất Excel, hỏi nhanh |
 | [DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) | Lập trình viên: cấu trúc mã, thêm cột / công thức / quyền / job, test, đóng gói |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Kiến trúc, database, các quyết định thiết kế |
 | [DATA_MAPPING.md](docs/DATA_MAPPING.md) | 47 cột Follow Up ↔ trường chuẩn ↔ file đích |
@@ -115,9 +117,50 @@ Chi tiết từng bước, cấu hình file Excel thật, chạy nền khi khở
 
 ---
 
+## Nhập dữ liệu từ file Excel ngoài
+
+Ngoài file Follow Up theo khung 47 cột, hệ thống nhận **file Excel bất kỳ** — ví dụ *Shipment schedule* hàng trăm cột do phần mềm khác xuất ra.
+
+Vào **Quản lý › Nhập Excel ngoài**, rồi:
+
+1. **Tải file lên** — hệ thống liệt kê sheet và tự đoán dòng tiêu đề.
+2. **Chọn cột** — bảng hiện **tất cả** cột kèm tỷ lệ ô có dữ liệu và vài giá trị mẫu, nên bạn nhìn thấy ngay cột nào thật sự chứa cái mình cần (nhiều file có tiêu đề lệch so với dữ liệu bên dưới). Hệ thống gợi ý ánh xạ và chỉ tự tick khi chắc chắn từ 90% trở lên — còn lại bạn quyết định. Bắt buộc chọn **JO**, **EX-FACT DATE**, **BUYER**.
+3. **Xem trước** — bao nhiêu dòng thêm mới / cập nhật / bỏ qua và vì sao (ô `#REF!`, thiếu JO…).
+4. **Nhập** — và lưu lại thành **bộ map** để lần sau chỉ cần chọn tên bộ map.
+
+Cột không chọn thì hệ thống không đọc tới. File gốc không bị sửa.
+
+---
+
+## Công thức trên lưới
+
+Cột công thức khai báo sẵn trong [`config/followup_template.yaml`](config/followup_template.yaml), và **người dùng gõ thẳng công thức vào ô** như Excel:
+
+```
+=ROUND(W*0.95,2)          tham chiếu bằng chữ cột, cùng dòng
+=ROUND([Price]*0.95,2)    hoặc bằng tên cột
+=IF([FinalCBM]>15,"FCL","LCL")
+=SUM(N:Q)                 cộng nhiều cột trong CÙNG một dòng
+```
+
+Hàm hỗ trợ: IF, IFERROR, AND, OR, NOT, SUM, MIN, MAX, AVERAGE, COUNT, COUNTA, ROUND, ROUNDUP, ROUNDDOWN, INT, ABS, MOD, POWER, SQRT, CEILING, FLOOR, LEN, LEFT, RIGHT, MID, TRIM, UPPER, LOWER, CONCAT, VALUE, ISBLANK, ISNUMBER, TODAY, DATE, YEAR, MONTH, DAY, DAYS.
+
+Một công thức được phân tích **một lần** thành cây, rồi Python (máy chủ), JavaScript (lưới) và file Excel xuất ra cùng đọc cây đó — nên ba nơi luôn cho cùng kết quả, kể cả cách làm tròn 0,5. Trình duyệt không `eval()` gì cả. Công thức **chỉ tính trong một dòng**; tổng theo nhiều dòng xem ở thanh trạng thái dưới lưới (Tổng / TB / Nhỏ nhất / Lớn nhất của vùng đang chọn).
+
+---
+
+## Nhiều người dùng chung cùng lúc
+
+- Lưới tự **kéo thay đổi của người khác về mỗi 7 giây** và tô sáng dòng vừa đổi — không phải bấm Tải lại.
+- Hiện **ai đang sửa dòng nào** và bao nhiêu người đang mở trang.
+- **Khóa lạc quan** theo từng dòng: gửi bản cũ thì máy chủ trả lại dòng mới thay vì ghi đè — áp dụng cho cả xung đột người ↔ Automation.
+- SQLite bật WAL + `busy_timeout`, nên nhiều người ghi cùng lúc không gặp lỗi *database is locked*. Khi phòng đông hơn nữa, đổi `database.url` sang SQL Server / PostgreSQL.
+
+---
+
 ## Công nghệ
 
-Python 3.11 · FastAPI + Jinja2 · SQLAlchemy 2 (SQLite mặc định; SQL Server / PostgreSQL qua `database.url`) · APScheduler · openpyxl (đọc) + lxml (ghi Excel lossless, không phá công thức / định dạng / link) · Jspreadsheet CE 4 (MIT, đóng gói sẵn để chạy offline) · pywin32 (Outlook desktop qua COM) · pdfplumber (đọc chữ trong PDF) · pytest (≈260 test) · GitHub Actions (Windows + Ubuntu).
+Python 3.11 · FastAPI + Jinja2 · SQLAlchemy 2 (SQLite mặc định; SQL Server / PostgreSQL qua `database.url`) · APScheduler · openpyxl (đọc) + lxml (ghi Excel lossless, không phá công thức / định dạng / link) · Jspreadsheet CE 4 (MIT, đóng gói sẵn để chạy offline) · pywin32 (Outlook desktop qua COM) · pdfplumber (đọc chữ trong PDF) · pytest (≈260 test, chạy trên Windows + Ubuntu).
 
 Hiệu năng (đo trên 10.000 lô, 148.000 task, SQLite): các trang web mở dưới 2 giây; đồng bộ booking + task mỗi lần quét khoảng 2–3 giây.
 
@@ -131,7 +174,7 @@ Vì sao không dùng Celery/Redis như SRS gợi ý: Celery không hỗ trợ Wi
 - Phân quyền kiểm tra ở **backend** — kể cả xuất Excel (người dùng yêu cầu xuất "tất cả" vẫn chỉ nhận lô của mình).
 - Không xóa dữ liệu nghiệp vụ: lô hàng chỉ **lưu trữ**, tài khoản chỉ **khóa**, booking chỉ **hủy / rebook**, chứng từ chỉ **thêm version**; mọi thay đổi vào Audit Log + dòng thời gian lô hàng (ai, lúc nào, nguồn, giá trị cũ → mới).
 - Email Outlook chỉ lưu đoạn đầu nội dung + file đính kèm liên quan (PDF / Excel) trong thư mục dữ liệu máy chủ; chứng từ lưu ngoài database (có thể đặt ở ổ mạng).
-- Không đưa file Excel thật / mã buyer thật lên GitHub: `config/config.yaml`, `config/buyer_rules.yaml`, `data/`, `sample_data/` đã nằm trong `.gitignore`. Dữ liệu demo hoàn toàn giả lập.
+- Không đưa file Excel thật / mã buyer thật vào mã nguồn chia sẻ: `config/config.yaml`, `config/buyer_rules.yaml`, `data/`, `sample_data/` đã nằm trong `.gitignore`. Dữ liệu demo hoàn toàn giả lập.
 
 ## Giấy phép
 

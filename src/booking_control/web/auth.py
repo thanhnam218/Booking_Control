@@ -31,7 +31,7 @@ from ..db.models import User, WebSession, utcnow
 
 COOKIE_NAME = "bc_session"
 ROLES = ("admin", "manager", "user", "viewer", "auditor")
-ROLE_LABELS = {"admin": "Quản trị", "manager": "Quản lý", "user": "Người dùng", "viewer": "Chỉ xem",
+ROLE_LABELS = {"admin": "Quản trị", "manager": "Quản lý", "user": "Nhân viên", "viewer": "Chỉ xem",
                "auditor": "Kiểm soát (Auditor)"}
 READ_ALL = {"admin", "manager", "viewer", "auditor"}
 USERNAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{1,39}$")
@@ -67,6 +67,9 @@ PERMISSIONS: dict[str, set[str]] = {
     "audit.view": {"admin", "manager", "auditor"},
     "reports.team": READ_ALL,
     # Quan tri
+    # 5 bang "xuong song" (SRSv4 muc 68): Quan ly duoc XEM de doi chieu nghiep vu,
+    # sua van chi Admin (sua trong file YAML).
+    "rules.view": {"admin", "manager", "auditor"},
     "config.mapping": {"admin"},
     "config.buyers": {"admin"},
     "config.settings": {"admin"},
@@ -80,6 +83,7 @@ PERMISSION_LABELS = {
     "shipments.assign": "Phân công / giao lại lô", "booking.edit": "Tạo / sửa / tách / gộp booking",
     "booking.cancel": "Hủy / rebook / hold booking", "execution.record": "Ghi nhận xuất hàng (một phần)",
     "email.review": "Duyệt email Outlook (ghép lô, áp dụng)", "email.view_all": "Xem mọi email",
+    "rules.view": "Xem 5 bảng xương sống (Buyer×Forwarder, Email, Deadline, Chứng từ, Quyền cột)",
     "document.upload": "Tải lên chứng từ", "document.approve": "Duyệt / trả lại chứng từ",
     "workflow.complete": "Hoàn thành task B1–B15.1", "tasks.view_all": "Xem task của mọi người",
     "weekly.confirm": "Chốt Weekly Planning", "exceptions.view_all": "Xem mọi exception",

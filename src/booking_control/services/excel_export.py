@@ -106,6 +106,18 @@ def _write_header(ws, tmpl: FollowUpTemplate, include_system: bool) -> None:
     ws.auto_filter.ref = f"A1:{get_column_letter(last)}1"
 
 
+
+def _cell_formula(tmpl, expr: str, letter_of: dict[str, str], row: int) -> str | None:
+    """Cong thuc rieng cua mot o -> chuoi cong thuc Excel. Loi thi tra None (ghi gia tri)."""
+    from ..followup import fx
+
+    try:
+        prog = tmpl.compile_cell_formula(expr)
+        return "=" + fx.to_excel(prog.node, letter_of, row)
+    except fx.FxError:
+        return None
+
+
 def _excel_value(col, value: Any) -> Any:
     if value is None or value == "":
         return None
@@ -136,13 +148,17 @@ def _write_rows(ws, rows: list[Shipment], tmpl: FollowUpTemplate, *, status_colo
         color = status_color(sh.effective_status or "WHITE") if color_rows else ""
         if color and color not in fills:
             fills[color] = PatternFill("solid", start_color=color, end_color=color)
+        cell_fx = sh.cell_formulas or {}
         for c in tmpl.columns:
             cell = ws.cell(r, c.index + 1)
-            if write_formulas and c.formula is not None and c.field not in manual:
+            formula = None
+            if write_formulas and c.field in cell_fx:
+                # Cong thuc nguoi dung go tren luoi -> xuat ra cong thuc Excel that,
+                # de mo bang Excel van tinh lai duoc chu khong phai con so chet.
+                formula = _cell_formula(tmpl, cell_fx[c.field], letter_of, r)
+            elif write_formulas and c.formula is not None and c.field not in manual:
                 formula = c.formula.excel(letter_of, r)
-                cell.value = formula if formula else _excel_value(c, data.get(c.field))
-            else:
-                cell.value = _excel_value(c, data.get(c.field))
+            cell.value = formula if formula else _excel_value(c, data.get(c.field))
             if c.type == "date":
                 cell.number_format = c.excel_format or "dd/mm/yyyy"
             cell.font = body_font

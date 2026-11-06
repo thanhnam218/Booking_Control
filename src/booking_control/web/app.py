@@ -15,8 +15,12 @@ Moi trang deu can dang nhap; quyen kiem tra o backend.
     /exceptions                Exception Center
     /notifications             Thong bao cua toi
     /import                    Nhap file Follow Up (xem truoc -> nhap)
+    /import/external           Nhap file Excel ngoai: chon sheet + chon cot can lay (v3.1)
+    /groups, /groups/KEY       Nhom lo xuat: BUYER + EX-FACT + DEST + MODE, tong CBM/JO/GO (v3.2)
     /automation                Cac job tu dong + lich su chay
     /admin/users               Nguoi dung & vai tro (Admin);  /admin/permissions  ma tran quyen
+    /matrices                  5 bang xuong song: Buyer x Forwarder, Email Pattern,
+                               Deadline, Chung tu, Quyen tung cot (SRSv4 muc 68)
     /mapping /buyers /settings /backups /audit
 """
 
@@ -95,7 +99,10 @@ def create_app(engine=None, scheduler=None) -> FastAPI:
         routes_booking,
         routes_email,
         routes_grid,
+        routes_group,
+        routes_import,
         routes_main,
+        routes_matrix,
         routes_work,
     )
 
@@ -103,6 +110,9 @@ def create_app(engine=None, scheduler=None) -> FastAPI:
     app.include_router(routes_booking.router)  # /bookings/new truoc /bookings/{id}
     app.include_router(routes_main.router)
     app.include_router(routes_grid.router)
+    app.include_router(routes_group.router)
+    app.include_router(routes_matrix.router)
+    app.include_router(routes_import.router)
     app.include_router(routes_email.router)
     app.include_router(routes_work.router)
     app.include_router(routes_admin.router)

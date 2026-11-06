@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import secrets
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -130,30 +131,106 @@ def reset_password(request: Request, uid: int):
 
 @router.get("/assignments", response_class=HTMLResponse)
 def assignments_page(request: Request):
-    p = require(request, "shipments.assign")
+    require(request, "shipments.assign")
     today = dt.date.today()
     with session_scope() as s:
         team = workload(s, today)
-        unassigned = list(s.execute(svc.order_like_followup(
-            svc.visible_stmt(p).where(Shipment.assigned_to == "")).limit(300)).scalars())
         opts = {
-            "buyers": sorted({b for (b,) in s.execute(select(Shipment.buyer_code).distinct()).all() if b}),
+            "buyers": sorted({b for (b,) in s.execute(
+                select(Shipment.buyer_code).where(Shipment.is_active.is_(True)).distinct()).all() if b}),
             "forwarders": sorted({f for (f,) in s.execute(select(Shipment.forwarder).distinct()).all() if f}),
             "modes": sorted({m for (m,) in s.execute(select(Shipment.ship_mode).distinct()).all() if m}),
+            "statuses": sorted({x for (x,) in s.execute(select(Shipment.effective_status).distinct()).all() if x}),
         }
         users = [(u["user"], u["label"]) for u in team if u["user"]]
-        history = [{"ts": h.ts, "code": h.shipment_code, "kind": h.kind, "from": h.from_user, "to": h.to_user,
-                    "by": h.by_user, "method": h.method}
+        history = [{"ts": h.ts, "code": h.shipment_code, "kind": h.kind, "from": h.from_user,
+                    "to": h.to_user, "by": h.by_user, "method": h.method}
                    for h in s.execute(select(AssignmentHistory).order_by(AssignmentHistory.id.desc())
-                                      .limit(40)).scalars()]
-        rows = [{"code": sh.shipment_code, "jo": sh.jo, "buyer": sh.buyer_code or sh.buyer_raw,
-                 "exfty": sh.exfty_date, "mode": sh.ship_mode, "forwarder": sh.forwarder,
-                 "status": sh.effective_status, "owner": sh.owner_user} for sh in unassigned]
+                                      .limit(30)).scalars()]
     rules = settings().assignment.rules
-    return render(request, "assignments.html", team=team, unassigned=rows, opts=opts, users=users,
+    return render(request, "assignments.html", team=team, opts=opts, users=users,
                   history=history, rules=rules)
 
 
+def _assign_filters(q) -> dict[str, Any]:
+    """Bo loc chung cho ca xem truoc va giao that - mot nguon duy nhat."""
+    keys = ("assigned", "status", "biz", "warn", "buyer", "forwarder", "mode",
+            "date_from", "date_to", "q")
+    f = {k: q.get(k, "") for k in keys if q.get(k)}
+    if str(q.get("hide_done", "")) in ("1", "true", "yes"):
+        f["hide_done"] = True
+    return f
+
+
+@router.get("/api/assign/preview")
+def assign_preview(request: Request):
+    """Bo loc nay khop bao nhieu lo, cua ai, vai vi du - xem TRUOC khi giao hang tram lo."""
+    p = require(request, "shipments.assign")
+    f = _assign_filters(request.query_params)
+    with session_scope() as s:
+        stmt = svc.apply_filters(svc.visible_stmt(p), f)
+        total = s.execute(select(func.count()).select_from(stmt.order_by(None).subquery())).scalar_one()
+        ships = list(s.execute(svc.order_like_followup(stmt).limit(12)).scalars())
+        by_owner: dict[str, int] = {}
+        for (owner,) in s.execute(
+                stmt.order_by(None).with_only_columns(Shipment.assigned_to)).all():
+            by_owner[owner or ""] = by_owner.get(owner or "", 0) + 1
+        labels = {u.name: u.label for u in s.execute(select(User)).scalars()}
+        sample = [{"code": sh.shipment_code, "jo": sh.jo, "buyer": sh.buyer_code or sh.buyer_raw,
+                   "exfty": sh.exfty_date.strftime("%d/%m/%Y") if sh.exfty_date else "",
+                   "mode": sh.ship_mode, "status": sh.effective_status,
+                   "owner": labels.get(sh.assigned_to, sh.assigned_to) or "(chưa phân công)"}
+                  for sh in ships]
+    current = sorted(({"user": k, "label": labels.get(k, k) or "(chưa phân công)", "n": v}
+                      for k, v in by_owner.items()), key=lambda x: -x["n"])
+    return {"total": total, "sample": sample, "current": current}
+
+
+@router.get("/api/assign/board")
+def assign_board(request: Request):
+    """Bang keo-tha: moi the la MOT NHOM lo (buyer + tuan EX-FACT), keo 1 lan giao ca nhom.
+
+    Voi 2000+ lo/thang thi keo tung dong la khong the - nen the o day la nhom, con so tren
+    the la so lo se duoc giao khi tha.
+    """
+    p = require(request, "shipments.assign")
+    today = dt.date.today()
+    only = request.query_params.get("scope", "unassigned")
+    with session_scope() as s:
+        stmt = svc.visible_stmt(p).where(
+            Shipment.effective_status.notin_(("COMPLETED", "CANCELLED")))
+        if only == "unassigned":
+            stmt = stmt.where(Shipment.assigned_to == "")
+        rows = s.execute(stmt.with_only_columns(
+            Shipment.buyer_code, Shipment.buyer_raw, Shipment.exfty_date,
+            Shipment.assigned_to, Shipment.effective_status)).all()
+        team = workload(s, today)
+
+    groups: dict[tuple, dict[str, Any]] = {}
+    for buyer_code, buyer_raw, exfty, owner, status in rows:
+        buyer = buyer_code or buyer_raw or "(không rõ buyer)"
+        if exfty:
+            monday = exfty - dt.timedelta(days=exfty.weekday())
+            week = monday.isocalendar()
+            key = (buyer, monday)
+            label_week = f"tuần {week[1]} · {monday:%d/%m}–{monday + dt.timedelta(days=6):%d/%m}"
+            date_from, date_to = monday.isoformat(), (monday + dt.timedelta(days=6)).isoformat()
+        else:
+            key = (buyer, None)
+            label_week = "chưa có EX-FACT"
+            date_from = date_to = ""
+        g = groups.setdefault(key, {
+            "buyer": buyer, "week": label_week, "date_from": date_from, "date_to": date_to,
+            "n": 0, "urgent": 0, "owner": owner or "",
+        })
+        g["n"] += 1
+        if status in ("RED", "WHITE"):
+            g["urgent"] += 1
+    out = sorted(groups.values(), key=lambda g: (g["date_from"] or "9999", -g["n"]))
+    return {"groups": out[:200], "team": team, "total_groups": len(out)}
+
+
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # Automation (job nen)
 # ---------------------------------------------------------------------------

@@ -259,6 +259,8 @@ class AutomationEngine:
                 self._evaluate_status(s, shipments, candidates, res, today)
                 if not dry_run:
                     self._sync_tasks(s, list(shipments.values()), today)
+                    self._sync_jo_go(s, shipments)
+                    self._sync_export_groups(s, shipments)
                 events = self._evaluate_deadlines(s, shipments, candidates, res, today)
                 self._dispatch(s, events, shipments, res, deliver_notifications)
                 self._write_outputs(s, shipments, allocations, res, dry_run, today)
@@ -474,6 +476,8 @@ class AutomationEngine:
             self._allocate_containers(s, shipments, cands)
             self._evaluate_status(s, shipments, cands, res, today)
             self._sync_tasks(s, list(shipments.values()), today)
+            self._sync_jo_go(s, shipments)
+            self._sync_export_groups(s, shipments)
             log_audit(s, "EXCEL_IMPORTED", actor_type="USER", actor_name=owner, entity="file",
                       entity_id=code, new_value=f"{out['new']} moi / {out['update']} cap nhat")
             s.commit()
@@ -485,6 +489,227 @@ class AutomationEngine:
             raise
         finally:
             s.close()
+
+    # ------------------------------------------------------------------
+    # Nhap file Excel NGOAI (Shipment schedule...) theo bo map cot nguoi dung chon
+    # ------------------------------------------------------------------
+
+    def import_external(
+        self, path: str | Path, *, sheet: str, header_row: int, mapping: dict[int, str],
+        owner: str, file_label: str = "", dry_run: bool = True, today: dt.date | None = None,
+        limit: int = 20000,
+    ) -> dict[str, Any]:
+        """Doc file bat ky theo bo map cot roi dua vao dung duong xu ly nhu file Follow Up.
+
+        Khac `import_followup` o cho: KHONG tu nhan dien sheet / cot. Nguoi dung da chon
+        sheet, dong tieu de va tung cot can lay - hop voi file may xuat ra co 100+ cot.
+        """
+        from .db.session import new_session
+        from .excel.backup import row_hash
+        from .excel.external import clean_value, describe_mapping, read_mapped_rows
+        from .excel.reader import CanonicalRow
+
+        today = today or dt.date.today()
+        code = "EXTERNAL:" + (file_label or Path(path).name)[:60]
+        res = ScanResult(dry_run=dry_run)
+        raw_rows = read_mapped_rows(path, sheet, header_row, mapping, limit=limit)
+
+        canon: list[CanonicalRow] = []
+        skipped: list[dict[str, Any]] = []
+        for rec in raw_rows:
+            values: dict[str, Any] = {}
+            issues: list[dict[str, Any]] = []
+            for fld, raw in rec.items():
+                if fld == "_row":
+                    continue
+                value, err = self.template.parse(fld, clean_value(raw))
+                if err:
+                    issues.append({"field": fld, "reason": err, "severity": "NEED_REVIEW",
+                                   "column": "", "raw": str(raw)[:60]})
+                    continue
+                values[fld] = value
+            # Khoa lo hang la JO + EX-FACT DATE: thieu mot trong hai thi khong the nhap
+            if not clean_text(values.get("JO")) or not values.get("ExFtyDate"):
+                skipped.append({"row": rec["_row"],
+                                "reason": "Thiếu JO hoặc EX-FACT DATE",
+                                "jo": clean_text(values.get("JO")),
+                                "exfty": to_canonical_date(values.get("ExFtyDate"))})
+                continue
+            canon.append(CanonicalRow(
+                file_code=code, file_path=str(path), sheet=sheet, row_index=rec["_row"],
+                values=values, issues=issues, owner_user=owner,
+                data_hash=row_hash({k: v for k, v in values.items() if k != "Remark"}),
+                source_version=f"external:{header_row}:{len(mapping)}",
+            ))
+
+        res.rows_read = len(canon)
+        s = new_session()
+        try:
+            candidates, duplicates = build_candidates(
+                canon, self.buyers.resolve, include_no=self.settings.shipment.key_includes_no)
+            keys = {c.key for c in candidates}
+            existing = set(s.execute(select(Shipment.shipment_key).where(
+                Shipment.shipment_key.in_(keys))).scalars()) if keys else set()
+            preview = [
+                {"jo": c.jo, "exfty": to_canonical_date(c.exfty), "buyer": c.buyer_rule.code,
+                 "no": clean_text(c.row.values.get("ShipmentNo")), "sheet": c.row.sheet,
+                 "row": c.row.row_index,
+                 "action": "CAP NHAT" if c.key in existing else "THEM MOI"}
+                for c in candidates
+            ]
+            out = {
+                "file": code, "sheet": sheet, "header_row": header_row,
+                "mapping": describe_mapping(mapping),
+                "rows": len(candidates), "read": len(raw_rows),
+                "new": sum(p["action"] == "THEM MOI" for p in preview),
+                "update": sum(p["action"] == "CAP NHAT" for p in preview),
+                "skipped": skipped[:200], "skipped_total": len(skipped),
+                "duplicates": len(duplicates), "preview": preview[:500],
+                "errors": list(res.errors), "applied": False,
+            }
+            if dry_run:
+                s.rollback()
+                return out
+            self._container_checks = []
+            shipments = self._persist_shipments(s, candidates, res, today)
+            self._allocate_containers(s, shipments, candidates)
+            self._evaluate_status(s, shipments, candidates, res, today)
+            self._sync_tasks(s, list(shipments.values()), today)
+            self._sync_jo_go(s, shipments)
+            self._sync_export_groups(s, shipments)
+            log_audit(s, "EXCEL_IMPORTED", actor_type="USER", actor_name=owner, entity="file",
+                      entity_id=code,
+                      new_value=f"{out['new']} moi / {out['update']} cap nhat",
+                      note=f"sheet={sheet} header_row={header_row} {out['mapping']}"[:300])
+            s.commit()
+            out["applied"] = True
+            out["auto_assigned"] = res.auto_assigned
+            return out
+        except Exception:
+            s.rollback()
+            raise
+        finally:
+            s.close()
+
+    # ------------------------------------------------------------------
+    # Export Shipment Group (SRSv5.1 muc 2-4, SRSv5.5 muc 4)
+    # ------------------------------------------------------------------
+
+    def _sync_export_groups(self, s: Session, shipments: dict[str, Shipment]) -> int:
+        """Gom lo theo BUYER + EX-FACT DATE + DEST + MODE va cong tong cho ca nhom.
+
+        Nhom KHONG sinh booking - chi tong hop de nhan vien nhin mot lan thay het
+        (tong CBM, so JO, so GO, container du kien).
+        """
+        from .core import export_group as eg
+        from .db.models_v3 import ExportShipmentGroup
+
+        touched: set[str] = set()
+        for sh in shipments.values():
+            key = eg.group_key(sh.buyer_code or sh.buyer_raw, sh.exfty_date,
+                               sh.destination, sh.ship_mode) if eg.is_groupable(sh) else ""
+            if sh.export_group_key != key:
+                sh.export_group_key = key
+            if key:
+                touched.add(key)
+        if not touched:
+            return 0
+
+        s.flush()
+        rows = list(s.execute(select(Shipment).where(
+            Shipment.export_group_key.in_(touched),
+            Shipment.is_active.is_(True), Shipment.archived.is_(False))).scalars())
+        by_key: dict[str, list[Shipment]] = {}
+        for sh in rows:
+            by_key.setdefault(sh.export_group_key, []).append(sh)
+
+        existing = {
+            g.group_key: g for g in s.execute(
+                select(ExportShipmentGroup).where(
+                    ExportShipmentGroup.group_key.in_(touched))).scalars()
+        }
+        cfg = self.settings.container
+        changed = 0
+        for key in touched:
+            members = [sh for sh in by_key.get(key, []) if eg.is_groupable(sh)]
+            group = existing.get(key)
+            if not members:
+                if group is not None:
+                    s.delete(group)          # nhom rong -> bo (day la du lieu suy ra)
+                    changed += 1
+                continue
+            head = members[0]
+            totals = eg.summarize(members)
+            plan = plan_containers(
+                totals.cbm or None, head.ship_mode or "SEA",
+                capacity=cfg.capacity, priority=cfg.priority, strategy=cfg.strategy,
+                lcl_threshold_cbm=cfg.lcl_threshold_cbm, safety_factor=cfg.safety_factor,
+                air_type=cfg.air_type, lcl_type=cfg.lcl_type,
+                needs_user_review=bool(totals.missing_cbm),
+            )
+            if group is None:
+                group = ExportShipmentGroup(group_key=key)
+                s.add(group)
+            group.label = eg.group_label(head.buyer_code or head.buyer_raw, head.exfty_date,
+                                         head.destination, head.ship_mode)
+            group.buyer_code = head.buyer_code or head.buyer_raw
+            group.exfty_date = head.exfty_date
+            group.destination = head.destination
+            group.ship_mode = head.ship_mode
+            group.shipment_count = totals.shipments
+            group.jo_count, group.go_count = totals.jo_count, totals.go_count
+            group.total_pcs, group.total_ctns = totals.pcs, totals.ctns
+            group.total_gross_weight, group.total_cbm = totals.gross_weight, totals.cbm
+            group.missing_cbm = totals.missing_cbm
+            group.container_plan = {
+                "type": plan.container_type, "mode": plan.booking_mode,
+                "quantities": plan.quantities, "capacity": plan.estimated_capacity,
+                "excess": plan.excess_capacity, "status": plan.allocation_status,
+                "note": plan.note,
+            }
+            group.booking_numbers = totals.booking_numbers
+            group.details = {"jos": totals.jos, "gos": totals.gos}
+            changed += 1
+        return changed
+
+    # ------------------------------------------------------------------
+    # Quan he JO - GO (SRSv5.1 muc 5)
+    # ------------------------------------------------------------------
+
+    def _sync_jo_go(self, s: Session, shipments: dict[str, Shipment]) -> int:
+        """Cap nhat bang jo_go_links tu du lieu vua quet.
+
+        Quan he do NGUOI DUNG tu noi (source=USER) khong bao gio bi Automation ghi de.
+        """
+        from .core.jogo import SOURCE_USER, JoGoRules, links_from_rows
+        from .db.models_v3 import JoGoLink
+
+        rules = JoGoRules.from_config(self.settings.field_mapping.get("jo_go"))
+        rows = [(sh.jo, sh.go) for sh in shipments.values() if sh.jo or sh.go]
+        if not rows:
+            return 0
+        found = links_from_rows(rows, rules)
+        if not found:
+            return 0
+        existing = {
+            (link.jo.upper(), link.go.upper()): link
+            for link in s.execute(select(JoGoLink)).scalars()
+        }
+        changed = 0
+        for link in found:
+            row = existing.get(link.key())
+            if row is None:
+                s.add(JoGoLink(jo=link.jo, go=link.go, core=link.core,
+                               source=link.source, confidence=link.confidence))
+                changed += 1
+            elif row.source != SOURCE_USER and (row.source != link.source
+                                                or row.core != link.core):
+                # IMPORT chac chan hon SYSTEM_RULE -> duoc phep nang cap
+                if not (row.source == "IMPORT" and link.source == "SYSTEM_RULE"):
+                    row.source, row.confidence, row.core = (
+                        link.source, link.confidence, link.core)
+                    changed += 1
+        return changed
 
     def _sync_sheet_maps(self, s: Session, file_code: str, wb_result) -> None:
         src = s.execute(select(SourceFile).where(SourceFile.code == file_code)).scalar_one_or_none()
@@ -543,9 +768,13 @@ class AutomationEngine:
                     res.shipments_changed += 1
 
             if existing is None:
-                stamp = to_canonical_date(cand.exfty).replace("-", "") or today.strftime("%Y%m%d")
+                # Bo dem thu tu VA ma lo hang phai dung cung mot ngay. Lo chua co EX-FACT DATE
+                # lay ngay quet; neu moi noi tu lay today() rieng thi hai ngay co the lech nhau
+                # (vd qua nua dem) -> sinh trung shipment_code.
+                code_date = cand.exfty or today
+                stamp = to_canonical_date(code_date).replace("-", "") or today.strftime("%Y%m%d")
                 seq_by_date[stamp] = seq_by_date.get(stamp, self._next_seq(s, stamp)) + 1
-                code = make_shipment_code(cand.exfty, seq_by_date[stamp])
+                code = make_shipment_code(code_date, seq_by_date[stamp])
                 # auto_status/effective_status de rong -> lan dau khong tinh la "chuyen trang thai"
                 sh = Shipment(shipment_code=code, shipment_key=cand.key,
                               auto_status="", effective_status="", origin="EXCEL",
@@ -579,7 +808,10 @@ class AutomationEngine:
             sh.source_row = cand.row.row_index
             sh.owner_user = cand.row.owner_user
             if sh.data_hash != cand.row.data_hash:
+                # Dau moc cho luoi web tu keo thay doi ve (/api/followup/changes) va cho
+                # khoa lac quan: nguoi dang mo dong nay se duoc bao thay vi ghi de Automation.
                 sh.version = (sh.version or 0) + 1
+                sh.updated_at, sh.updated_by = utcnow(), "AUTOMATION"
             sh.data_hash = cand.row.data_hash
             sh.source_version = cand.row.source_version
             sh.data_confidence = cand.row.confidence
@@ -1089,7 +1321,15 @@ class AutomationEngine:
             if source == "USER":
                 sh.status_reason = {**sh.status_reason, "override": ov, "override_source": "USER"}
 
+            # Canh bao han booking: tinh tu BUSINESS STATUS (da book chua), khong tu mau
+            sh.deadline_warning = dl.booking_warning(
+                booked=sh.booking_status not in ("NOT_BOOKED", "CANCELLED"),
+                exfty=sh.exfty_date, cfg=self.settings.deadlines, today=today,
+                closed=effective in ("COMPLETED", "CANCELLED"),
+            )
+
             if old_effective and old_effective != effective:
+                sh.updated_at = utcnow()
                 res.transitions.append(f"{sh.jo or sh.shipment_code}: {old_effective} -> {effective}")
             if effective == "COMPLETED" and sh.completed_at is None:
                 sh.completed_at = utcnow()

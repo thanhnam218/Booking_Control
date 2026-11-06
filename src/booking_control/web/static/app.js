@@ -66,3 +66,20 @@
     askBtn.addEventListener("click", function () { Notification.requestPermission().then(function () { askBtn.hidden = true; }); });
   }
 })();
+
+/* Menu con: nho trang thai mo / dong cua tung nhom (rieng tung trinh duyet). */
+(function () {
+  "use strict";
+  var KEY = "bc-nav-open";
+  var open = {};
+  try { open = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) { open = {}; }
+  document.querySelectorAll("aside nav details.grp").forEach(function (d) {
+    var id = d.getAttribute("data-grp");
+    // Nhom chua trang dang xem luon mo (server da dat open) - khong ghi de
+    if (!d.hasAttribute("open") && open[id]) d.setAttribute("open", "");
+    d.addEventListener("toggle", function () {
+      open[id] = d.open;
+      try { localStorage.setItem(KEY, JSON.stringify(open)); } catch (e) { /* private mode */ }
+    });
+  });
+})();

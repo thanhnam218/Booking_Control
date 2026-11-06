@@ -207,6 +207,8 @@ def checklist(s: Session, settings, sh: Shipment, today: dt.date, *, docs: dict[
               anchors: dict[str, dt.date | None] | None = None) -> list[dict[str, Any]]:
     cfg = _cfg(settings)
     labels = {d["code"]: d.get("label", d["code"]) for d in cfg.get("document_types") or []}
+    # Owner cua Document Matrix: bo phan chiu trach nhiem tung loai chung tu
+    owners = {d["code"]: d.get("owner", "") for d in cfg.get("document_types") or []}
     required = wf.required_documents(cfg.get("document_rules") or [], mode=sh.ship_mode, buyer=sh.buyer_code,
                                      forwarder=sh.forwarder)
     if docs is None:
@@ -222,7 +224,7 @@ def checklist(s: Session, settings, sh: Shipment, today: dt.date, *, docs: dict[
             "REJECTED" if d and d.status == "REJECTED" else ("OVERDUE" if due and due < today else "MISSING"))
         out.append({"code": code, "label": labels.get(code, code), "required": code in required, "due": due,
                     "state": state, "version": d.current_version if d else 0, "doc_id": d.id if d else None,
-                    "status": d.status if d else ""})
+                    "status": d.status if d else "", "owner": owners.get(code, "")})
     return out
 
 

@@ -22,10 +22,27 @@ from ..core.normalize import clean_text, find_keyword, to_canonical_date
 from ..core.shipment import group_key, make_shipment_code, shipment_key
 from ..db.models import Shipment, utcnow
 from ..followup import FollowUpTemplate
+from ..followup.fx import FxError
 from ..web.auth import Principal
 from .assignment import assign, auto_assign
 
 MANUAL_SRC = ("USER", "MANAGER")
+
+
+def _fx_payload(sh: Shipment, tmpl: FollowUpTemplate) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for fld, expr in (sh.cell_formulas or {}).items():
+        try:
+            prog = tmpl.compile_cell_formula(expr)
+        except FxError:
+            continue
+        out[fld] = {"src": prog.source, "node": prog.node, "refs": prog.refs}
+    return out
+
+
+def _fx_label(expr: str | None) -> str:
+    """Hien cong thuc cu trong Audit Log."""
+    return ("=" + expr) if expr else ""
 
 
 class ServiceError(ValueError):
@@ -95,11 +112,41 @@ def apply_filters(stmt: Select, f: dict[str, Any]) -> Select:
         stmt = stmt.where(Shipment.exfty_date <= _date(f["date_to"]))
     if f.get("hide_done"):
         stmt = stmt.where(Shipment.effective_status.not_in(["COMPLETED", "CANCELLED"]))
+    # Loc theo CANH BAO HAN - truc rieng, khong phai mau va khong phai trang thai
+    if f.get("warn"):
+        w = str(f["warn"])
+        stmt = stmt.where(Shipment.deadline_warning != "") if w in ("1", "any", "true")             else stmt.where(Shipment.deadline_warning == w)
+    # Loc theo TRANG THAI NGHIEP VU (khac voi bo loc `status` von la mau)
+    if f.get("biz"):
+        stmt = _filter_business_status(stmt, str(f["biz"]))
     if f.get("q"):
         like = f"%{str(f['q']).strip()}%"
         stmt = stmt.where(or_(Shipment.jo.like(like), Shipment.shipment_no.like(like),
                               Shipment.buyer_raw.like(like), Shipment.booking_no.like(like),
                               Shipment.po.like(like), Shipment.style.like(like)))
+    return stmt
+
+
+def _filter_business_status(stmt: Select, value: str) -> Select:
+    """Loc theo trang thai nghiep vu, ghep tu booking_status / hold_status / ship_status."""
+    if value == "NOT_BOOKED":
+        return stmt.where(Shipment.booking_status.in_(["NOT_BOOKED", ""]),
+                          Shipment.hold_status != "HOLD")
+    if value == "ON_HOLD":
+        return stmt.where(Shipment.hold_status == "HOLD")
+    if value == "PARTIALLY_SHIPPED":
+        return stmt.where(Shipment.ship_status == "PARTIALLY_SHIPPED")
+    if value == "FULLY_SHIPPED":
+        return stmt.where(or_(Shipment.ship_status == "FULLY_SHIPPED",
+                              Shipment.effective_status == "COMPLETED"))
+    if value == "CANCELLED":
+        return stmt.where(or_(Shipment.booking_status == "CANCELLED",
+                              Shipment.effective_status == "CANCELLED"))
+    if value == "DELAYED":
+        return stmt.where(Shipment.booking_status == "DELAYED")
+    if value == "BOOKED":
+        return stmt.where(Shipment.booking_status.not_in(["NOT_BOOKED", "CANCELLED", ""]),
+                          Shipment.hold_status != "HOLD")
     return stmt
 
 
@@ -116,6 +163,38 @@ def order_like_followup(stmt: Select) -> Select:
 # ---------------------------------------------------------------------------
 # Dong luoi
 # ---------------------------------------------------------------------------
+
+
+def business_status(sh: Shipment) -> str:
+    """Trang thai NGHIEP VU cua lo hang - khong phai mau (SRSv5 Appendix A, BR-013).
+
+    Mau (`effective_status`) chi la lop hien thi. Trang thai nghiep vu duoc ghep tu ba
+    cot rieng da co: booking_status, hold_status, ship_status.
+    """
+    if sh.effective_status == "CANCELLED" or sh.booking_status == "CANCELLED":
+        return "CANCELLED"
+    if sh.ship_status == "FULLY_SHIPPED" or sh.effective_status == "COMPLETED":
+        return "FULLY_SHIPPED"
+    if sh.ship_status == "PARTIALLY_SHIPPED" or sh.effective_status == "PARTIAL":
+        return "PARTIALLY_SHIPPED"
+    if sh.hold_status == "HOLD":
+        return "ON_HOLD"
+    if sh.booking_status in ("NOT_BOOKED", ""):
+        return "NOT_BOOKED"
+    if sh.booking_status == "DELAYED":
+        return "DELAYED"
+    return "BOOKED"
+
+
+BUSINESS_STATUS_LABELS = {
+    "NOT_BOOKED": "Chưa booking",
+    "BOOKED": "Đã booking",
+    "ON_HOLD": "Đang hold",
+    "DELAYED": "Trễ lịch",
+    "PARTIALLY_SHIPPED": "Xuất một phần",
+    "FULLY_SHIPPED": "Đã xuất xong",
+    "CANCELLED": "Đã hủy",
+}
 
 
 def deadline_label(sh: Shipment, today: dt.date) -> str:
@@ -153,9 +232,15 @@ def grid_row(sh: Shipment, tmpl: FollowUpTemplate, today: dt.date, color_of) -> 
         "forwarder": sh.forwarder or "",
         "forwarder_status": sh.forwarder_status or "",
         "deadline": deadline_label(sh, today),
+        # Ba truc doc lap (SRSv5.1 muc 1): trang thai nghiep vu · mau · canh bao han
+        "biz": business_status(sh),
+        "warn": sh.deadline_warning or "",
         "origin": sh.origin or "EXCEL",
         "source": f"{sh.source_file_code}/{sh.source_sheet}!{sh.source_row}" if sh.origin != "WEB" else "WEB",
         "manual": sorted(f for f, m in src.items() if (m or {}).get("src") in MANUAL_SRC),
+        # Cong thuc nguoi dung go vao o: luoi hien lai khi bam vao o (giong thanh cong thuc
+        # Excel) va tu tinh lai ngay khi o tham chieu doi - nen gui kem ca cay da phan tich.
+        "fx": _fx_payload(sh, tmpl),
     }
 
 
@@ -227,6 +312,8 @@ def apply_edits(
 
     row = dict(sh.row_data or {})
     src = {k: dict(v or {}) for k, v in (sh.field_src or {}).items()}
+    cell_fx = dict(sh.cell_formulas or {})
+    fx_touched = False
     res = EditResult()
     now = utcnow().isoformat(timespec="seconds")
     changed: list[tuple[str, Any, Any]] = []
@@ -240,7 +327,30 @@ def apply_edits(
         if not col.can_edit(p.role):
             res.errors[fld] = f"Bạn không có quyền sửa cột {col.label}"
             continue
+
+        # Nguoi dung go cong thuc kieu Excel thang vao o: "=ROUND(W*0.95,2)"
+        if isinstance(raw, str) and raw.strip().startswith("=") and len(raw.strip()) > 1:
+            try:
+                prog = tmpl.compile_cell_formula(raw)
+                probe = dict(cell_fx)
+                probe[fld] = prog.source
+                tmpl.cell_formula_order(probe)  # bat cong thuc tham chieu vong ngay tu day
+            except FxError as exc:
+                res.errors[fld] = str(exc)
+                continue
+            if cell_fx.get(fld) != prog.source:
+                changed.append((fld, _fx_label(cell_fx.get(fld)), "=" + prog.source))
+            cell_fx[fld] = prog.source
+            fx_touched = True
+            src[fld] = {"src": "MANAGER" if p.is_manager else "USER", "by": p.name, "at": now,
+                        "fx": True, "excel": (src.get(fld) or {}).get("excel")}
+            continue
+
         value, err = tmpl.parse(fld, raw)
+        if fld in cell_fx:
+            # Go de len o dang co cong thuc -> bo cong thuc, giu gia tri vua go
+            changed.append((fld, _fx_label(cell_fx.pop(fld)), "(bỏ công thức)"))
+            fx_touched = True
         if err:
             res.errors[fld] = err
             continue
@@ -267,13 +377,25 @@ def apply_edits(
         if col.needs_review(p.role):
             review.append(fld)
 
-    if not changed:
+    if not changed and not fx_touched:
         res.ok = not res.errors
         res.row = grid_row(sh, tmpl, today, color_of)
         return res
 
     values = tmpl.row_from_json(row)
     values.update(recompute_formulas(tmpl, sh, values, src))
+    # Cong thuc rieng cua tung o chay SAU cong thuc co san cua template (co the dung ket qua
+    # cua template), roi template chay lai mot vong de cot phu thuoc cap nhat theo.
+    if cell_fx:
+        try:
+            values.update(tmpl.apply_cell_formulas(values, cell_fx, today))
+        except FxError as exc:
+            res.errors["_"] = str(exc)
+        else:
+            values.update(recompute_formulas(tmpl, sh, values, src))
+            values.update(tmpl.apply_cell_formulas(values, cell_fx, today))
+    for fld in cell_fx:
+        row[fld] = tmpl.to_json(fld, values.get(fld))
     derived = dict(sh.derived_notes or {})
     apply_remark_flags(values, engine.dictionary, derived)
 
@@ -288,6 +410,7 @@ def apply_edits(
 
     old_exfty = sh.exfty_date
     sh.field_src = src
+    sh.cell_formulas = cell_fx
     engine.apply_values(sh, values, today, derived=derived, pic_default=sh.pic, s=s)
     rule = engine.buyers.resolve(sh.buyer_raw)
     sh.group_key = group_key(values, rule)
@@ -365,10 +488,11 @@ def create_shipment(
     derived: dict[str, Any] = {}
     apply_remark_flags(values, engine.dictionary, derived)
 
-    stamp = to_canonical_date(exfty).replace("-", "")
+    code_date = exfty or today
+    stamp = to_canonical_date(code_date).replace("-", "") or today.strftime("%Y%m%d")
     seq = engine._next_seq(s, stamp) + 1
     sh = Shipment(
-        shipment_code=make_shipment_code(exfty, seq), shipment_key=shipment_key("web", "", jo, exfty),
+        shipment_code=make_shipment_code(code_date, seq), shipment_key=shipment_key("web", "", jo, exfty),
         origin="WEB", source_file_code="WEB", source_sheet="", source_row=0, owner_user=p.name,
         auto_status="", effective_status="", row_data={}, field_src={}, version=1,
     )

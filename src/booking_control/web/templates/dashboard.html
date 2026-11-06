@@ -1,5 +1,30 @@
 {% extends "base.html" %}
 {% block content %}
+
+{# "Exception Only" (SRSv5.5 muc 10): he thong tu kiem het, nguoi dung chi nhin viec can lam #}
+{% if queue %}
+<div class="card exq">
+  <h3>⚠ {{ queue|sum(attribute='count') }} việc cần bạn xử lý</h3>
+  <p class="muted" style="font-size:12px;margin-top:0">Hệ thống đã tự rà toàn bộ {{ total }} lô —
+    dưới đây chỉ là những chỗ thật sự cần tay người.</p>
+  <div class="exq-list">
+    {% for q in queue %}
+      <a class="exq-item {{ 'crit' if q.severity == 'CRITICAL' }}" href="{{ q.url }}">
+        <b>{{ q.count }}</b>
+        <span class="t">{{ q.label }}</span>
+        <span class="h">{{ q.hint }}</span>
+      </a>
+    {% endfor %}
+  </div>
+</div>
+{% else %}
+<div class="card exq ok">
+  <h3>✓ Không có việc nào cần xử lý gấp</h3>
+  <p class="muted" style="font-size:12px;margin:0">Hệ thống đã rà {{ total }} lô và không thấy
+    booking quá hạn, email mâu thuẫn, thiếu CBM hay chứng từ trễ hạn.</p>
+</div>
+{% endif %}
+
 <h2>{% if me.can('shipments.view_all') %}Tổng quan{% else %}Lô hàng của tôi{% endif %}</h2>
 <p class="page-sub">{{ total }} lô hàng đang theo dõi &middot; {{ exc_count }} exception chưa xử lý
   &middot; <a href="/followup">Mở lưới Follow Up &rarr;</a></p>

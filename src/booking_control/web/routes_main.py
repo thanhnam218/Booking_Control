@@ -13,6 +13,7 @@ from sqlalchemy import func, or_, select
 from ..audit import log_audit, resolve_exception
 from ..core import forwarder as fw
 from ..core import status as st
+from ..core.deadline import WARNING_LABELS as dl_warn_labels
 from ..core.deadline import compute_milestones, days_until
 from ..db import session_scope
 from ..db.models import (
@@ -117,6 +118,11 @@ def dashboard(request: Request):
                 "error": last_run.error},
         )
         data["v3"] = _dashboard_v3(s, p, ships, today)
+        # "Exception Only" (SRSv5.5 muc 10): he thong tu ra soat, nguoi dung chi nhin
+        # nhung lo THUC SU can tay nguoi.
+        from ..services import exception_queue
+
+        data["queue"] = exception_queue.build(s, p, today)
     return render(request, "dashboard.html", **data)
 
 
@@ -202,6 +208,26 @@ def shipment_detail(request: Request, code: str):
             select(AssignmentHistory).where(AssignmentHistory.shipment_code == code)
             .order_by(AssignmentHistory.id.desc()).limit(30)
         ).scalars())
+        # Quan he JO - GO (SRSv5.1 muc 5): JO khac cung mot GO
+        jogo = []
+        if sh.jo or sh.go:
+            from ..db.models_v3 import JoGoLink
+
+            mine = list(s.execute(select(JoGoLink).where(
+                or_(JoGoLink.jo == (sh.jo or "").upper(),
+                    JoGoLink.go == (sh.go or "").upper()))).scalars())
+            gos = {x.go for x in mine}
+            if gos:
+                siblings = list(s.execute(select(JoGoLink).where(JoGoLink.go.in_(gos))).scalars())
+                by_go: dict[str, list[dict]] = {}
+                for link in siblings:
+                    by_go.setdefault(link.go, []).append(
+                        {"jo": link.jo, "source": link.source, "confidence": link.confidence,
+                         "self": link.jo == (sh.jo or "").upper()})
+                jogo = [{"go": go, "core": next((x.core for x in siblings if x.go == go), ""),
+                         "jos": sorted(v, key=lambda x: x["jo"])}
+                        for go, v in sorted(by_go.items())]
+
         ms = compute_milestones(sh.exfty_date, engine().settings.deadlines) if sh.exfty_date else None
         tmpl = engine().template
         data = row_dict(sh, today)
@@ -239,6 +265,11 @@ def shipment_detail(request: Request, code: str):
                          if u.role in ("user", "manager", "admin")) if p.can("shipments.assign") else [],
             can_edit=svc.can_edit(p, sh),
             forwarder_candidates=(sh.derived_notes or {}).get("forwarder_candidates", []),
+            jogo=jogo,
+            biz_status=svc.business_status(sh),
+            biz_label=svc.BUSINESS_STATUS_LABELS.get(svc.business_status(sh), ""),
+            warn=sh.deadline_warning or "",
+            warn_label=dl_warn_labels.get(sh.deadline_warning or "", ""),
             msg=request.query_params.get("msg", ""), err=request.query_params.get("err", ""),
         )
         from .routes_work import shipment_v3_context

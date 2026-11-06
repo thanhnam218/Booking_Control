@@ -75,7 +75,7 @@ buyers:
     lcl_threshold_cbm: 20
 
   # Buyer gia lap cho file cau truc that (FollowUp_UserC). CO Form VK = C/O Viet Nam - Han Quoc.
-  # Thay bang ma buyer that cua ban trong config/buyer_rules.yaml (file nay khong dua len GitHub).
+  # Thay bang ma buyer that cua ban trong config/buyer_rules.yaml (file nay khong chia se ra ngoai).
   - code: "KRB"
     canonical_name: "KRB"
     aliases: ["KRB KOREA", "KRB CO"]
@@ -131,11 +131,35 @@ hold_reasons:
 #   khong co rule    -> NOT_ASSIGNED
 # Nguoi dung chot forwarder tay tren trang lo hang -> MANUAL, Automation khong doi nua.
 # Dieu kien de trong = khong xet. Ten forwarder duoi day la vi du.
+# -----------------------------------------------------------------------------
+# BUYER - FORWARDER RULE (SRS v2 muc 9-10)
+# -----------------------------------------------------------------------------
+# BUYER + MODE + DEST + PORT/WH (+ khoang EX-FACT) -> FORWARDER
+#   1 rule khop      -> AUTO_ASSIGNED
+#   nhieu rule khop  -> NEED_CONFIRM  (he thong KHONG tu chon)
+#   khong co rule    -> NOT_ASSIGNED
+# Nguoi dung chot forwarder tay tren trang lo hang -> MANUAL, Automation khong doi nua.
+# Dieu kien de trong = khong xet. Ten forwarder duoi day la vi du.
+# BUYER x FORWARDER MATRIX (SRSv4 muc 14 va bang 1 cua muc 68)
+#
+# Mot Buyer co THE co nhieu Forwarder - khong duoc gan cung mot Buyer voi mot Forwarder.
+# Rule duoc chon theo: buyer + mode + dest + port + khoang ngay xuat (exfty_from/to).
+#
+#   forwarder     bat buoc
+#   service       dich vu: FCL / LCL / AIR / EXPRESS...
+#   booking_rule  quy tac dat cho cua Forwarder do (hien cho nguoi dung doc)
+#   parser        ten Parser Profile trong email_profiles.yaml > forwarders
+#   exfty_from/to hieu luc theo ngay xuat - doi Forwarder giua nam van tra cuu duoc lich su
+#
+# Nhieu rule cung khop -> NEED_CONFIRM, he thong KHONG tu chon (SRSv4 muc 16).
 forwarder_rules:
-  - { buyer: ["ABC"], mode: ["SEA"], forwarder: "FWD-OCEAN-1" }
-  - { buyer: ["ABC"], mode: ["AIR"], forwarder: "FWD-AIR-1" }
-  - { buyer: ["XYZ"], forwarder: "FWD-OCEAN-2" }
-  - { buyer: ["KRB"], mode: ["SEA"], dest: ["KR"], forwarder: "FWD-KR-1" }
-  - { buyer: ["IKEA"], mode: ["SEA"], forwarder: "FWD-OCEAN-1" }
-  - { buyer: ["IKEA"], mode: ["SEA"], forwarder: "FWD-OCEAN-2" }   # 2 rule -> NEED_CONFIRM
-  - { buyer: ["SAMSUNG"], forwarder: "FWD-AIR-1" }
+  - { buyer: ["ABC"], mode: ["SEA"], forwarder: "FWD-OCEAN-1",
+      service: "FCL", booking_rule: "Gửi yêu cầu trước 12:00 ngày T-14", parser: "FWD-OCEAN-1" }
+  - { buyer: ["ABC"], mode: ["AIR"], forwarder: "FWD-AIR-1",
+      service: "AIR", booking_rule: "Đặt qua portal, cut-off 18:00 T-2", parser: "FWD-AIR-1" }
+  - { buyer: ["XYZ"], forwarder: "FWD-OCEAN-2", service: "FCL", parser: "FWD-OCEAN-2" }
+  - { buyer: ["KRB"], mode: ["SEA"], dest: ["KR"], forwarder: "FWD-KR-1",
+      service: "FCL", booking_rule: "Email booking@fwd-kr1, CC người phụ trách", parser: "FWD-KR-1" }
+  - { buyer: ["IKEA"], mode: ["SEA"], forwarder: "FWD-OCEAN-1", service: "FCL", parser: "FWD-OCEAN-1" }
+  - { buyer: ["IKEA"], mode: ["SEA"], forwarder: "FWD-OCEAN-2", service: "FCL", parser: "FWD-OCEAN-2" }   # 2 rule -> NEED_CONFIRM
+  - { buyer: ["SAMSUNG"], forwarder: "FWD-AIR-1", service: "AIR EXPRESS", parser: "FWD-AIR-1" }

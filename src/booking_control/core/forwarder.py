@@ -41,6 +41,12 @@ class ForwarderRule:
     port: list[str] = field(default_factory=list)
     exfty_from: dt.date | None = None
     exfty_to: dt.date | None = None
+    # SRSv4 muc 14 + bang 1 cua muc 68: mot dong Buyer x Forwarder day du gom ca
+    # dich vu, quy tac booking va bo doc email dung cho Forwarder do.
+    service: str = ""          # vd FCL / LCL / AIR EXPRESS
+    booking_rule: str = ""     # vd "gui truoc 12:00 T-14", "dat qua portal"
+    parser: str = ""           # ten Parser Profile trong email_profiles.yaml
+    note: str = ""
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> ForwarderRule:
@@ -56,6 +62,8 @@ class ForwarderRule:
 
         return cls(forwarder=str(d["forwarder"]), buyer=lst(d.get("buyer")), mode=lst(d.get("mode")),
                    dest=lst(d.get("dest")), port=lst(d.get("port")),
+                   service=str(d.get("service") or ""), booking_rule=str(d.get("booking_rule") or ""),
+                   parser=str(d.get("parser") or ""), note=str(d.get("note") or ""),
                    exfty_from=date(d.get("exfty_from")), exfty_to=date(d.get("exfty_to")))
 
     def matches(self, buyer: str, mode: str, dest: str, port: str, exfty: dt.date | None) -> bool:

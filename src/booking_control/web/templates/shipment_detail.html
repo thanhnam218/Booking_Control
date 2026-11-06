@@ -1,7 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>{{ sh.jo or sh.code }} <span class="pill {{ sh.status }}">{{ sh.status }}</span>
+<h2>{{ sh.jo or sh.code }}
+  <span class="pill {{ sh.status }}">{{ sh.status }}</span>
   {% if sh.archived %}<span class="tag">Đã lưu trữ</span>{% endif %}</h2>
+<p class="axes">
+  <span><i>Trạng thái nghiệp vụ</i><b>{{ biz_label or biz_status }}</b></span>
+  <span><i>Màu hiển thị</i><b class="pill {{ sh.status }}">{{ sh.status }}</b></span>
+  <span><i>Cảnh báo hạn</i>{% if warn %}<b class="warn-chip">{{ warn_label }}</b>{% else %}<b class="muted">không</b>{% endif %}</span>
+</p>
 <p class="page-sub">{{ sh.code }} &middot; NO {{ sh.no or '—' }} &middot; {{ sh.buyer }} &middot;
   EX-FACT {{ sh.exfty.strftime('%d/%m/%Y') if sh.exfty else '—' }} {% if sh.deadline %}({{ sh.deadline }}){% endif %}
   &middot; nguồn: {{ sh.source }} &middot; phiên bản {{ sh.version }}
@@ -50,6 +56,28 @@
     </form>
     {% endif %}
   </div>
+
+  {% if jogo %}
+  <div class="card">
+    <h3>JO cùng GO</h3>
+    <p class="muted" style="font-size:12px;margin-top:0">Một GO có thể gồm nhiều JO.
+      <b>Từ file</b> = hai mã nằm cùng một dòng Excel; <b>Suy ra</b> = cùng phần mã gốc,
+      hệ thống đề xuất chứ chưa chắc chắn.</p>
+    {% for g in jogo %}
+      <div class="gorow">
+        <span class="gotag">GO {{ g.go }}</span>
+        {% if g.core %}<span class="muted mono">mã gốc {{ g.core }}</span>{% endif %}
+        <div class="jolist">
+          {% for j in g.jos %}
+            <a href="/shipments?q={{ j.jo }}" class="jochip {{ 'me' if j.self }}"
+               title="{{ 'Từ file Excel' if j.source == 'IMPORT' else ('Suy ra từ mã gốc (' ~ (j.confidence * 100)|round|int ~ '%)' if j.source == 'SYSTEM_RULE' else 'Người dùng nối') }}">
+              {{ j.jo }}{% if j.source != 'IMPORT' %}<i>?</i>{% endif %}</a>
+          {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+  {% endif %}
 
   <div class="card">
     <h3>Vì sao {{ sh.status }}?</h3>

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf" content="{{ csrf }}">
 <title>{% block title %}{{ app_name }}{% endblock %}</title>
-<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/app.css?v={{ asset_v }}">
 {% block head %}{% endblock %}
 </head>
 <body>
@@ -15,30 +15,60 @@
   <h1>{{ app_name }}</h1>
   <p class="sub">Export Shipment &amp; Booking</p>
   <nav>
-    <a href="/" class="{{ 'on' if nav=='dashboard' }}"><span>Tổng quan</span></a>
-    <a href="/followup" class="{{ 'on' if nav=='followup' }}"><span>Follow Up (lưới Excel)</span></a>
-    <a href="/shipments" class="{{ 'on' if nav in ['shipments','shipment_detail'] }}"><span>Lô hàng</span></a>
-    <a href="/bookings" class="{{ 'on' if nav in ['bookings','booking_detail','booking_new'] }}"><span>Booking</span></a>
-    <a href="/emails" class="{{ 'on' if nav in ['emails','email_detail'] }}"><span>Email Outlook</span></a>
-    <a href="/tasks" class="{{ 'on' if nav=='tasks' }}"><span>Việc của tôi</span></a>
-    <a href="/weekly" class="{{ 'on' if nav=='weekly' }}"><span>Weekly Planning</span></a>
-    <a href="/exceptions" class="{{ 'on' if nav=='exceptions' }}"><span>Exception Center</span></a>
-    <a href="/notifications" class="{{ 'on' if nav=='notifications' }}"><span>Thông báo</span></a>
+    <a href="/" class="nav-top {{ 'on' if nav=='dashboard' }}"><span>Tổng quan</span></a>
+    <a href="/followup" class="nav-top {{ 'on' if nav=='followup' }}"><span>Follow Up (lưới Excel)</span></a>
+
+    {% set nav = nav_override or nav %}
+    {% set g_ship = nav in ['shipments','shipment_detail','bookings','booking_detail','booking_new','weekly','exceptions','groups'] %}
+    <details class="grp" data-grp="ship" {{ 'open' if g_ship }}>
+      <summary><span>Lô hàng</span></summary>
+      <div class="subnav">
+        <a href="/shipments" class="{{ 'on' if nav in ['shipments','shipment_detail'] }}"><span>Danh sách lô</span></a>
+        <a href="/groups" class="{{ 'on' if nav=='groups' }}"><span>Nhóm lô xuất</span></a>
+        <a href="/bookings" class="{{ 'on' if nav in ['bookings','booking_detail','booking_new'] }}"><span>Booking</span></a>
+        <a href="/weekly" class="{{ 'on' if nav=='weekly' }}"><span>Weekly Planning</span></a>
+        <a href="/exceptions" class="{{ 'on' if nav=='exceptions' }}"><span>Exception Center</span></a>
+      </div>
+    </details>
+
+    {% set g_work = nav in ['tasks','emails','email_detail','notifications'] %}
+    <details class="grp" data-grp="work" {{ 'open' if g_work }}>
+      <summary><span>Công việc</span></summary>
+      <div class="subnav">
+        <a href="/tasks" class="{{ 'on' if nav=='tasks' }}"><span>Việc của tôi</span></a>
+        <a href="/emails" class="{{ 'on' if nav in ['emails','email_detail'] }}"><span>Email Outlook</span></a>
+        <a href="/notifications" class="{{ 'on' if nav=='notifications' }}"><span>Thông báo</span></a>
+      </div>
+    </details>
+
     {% if me.can('shipments.assign') or me.can('import.excel') or me.can('automation.run') or me.can('audit.view') %}
-    <div class="sec">Quản lý</div>
-    {% if me.can('shipments.assign') %}<a href="/assignments" class="{{ 'on' if nav=='assignments' }}"><span>Phân công</span></a>{% endif %}
-    {% if me.can('import.excel') %}<a href="/import" class="{{ 'on' if nav=='import' }}"><span>Nhập Excel</span></a>{% endif %}
-    {% if me.can('automation.run') %}<a href="/automation" class="{{ 'on' if nav in ['automation','dryrun'] }}"><span>Automation</span></a>{% endif %}
-    {% if me.can('audit.view') %}<a href="/audit" class="{{ 'on' if nav=='audit' }}"><span>Audit Log</span></a>
-    <a href="/admin/permissions" class="{{ 'on' if nav=='permissions' }}"><span>Phân quyền</span></a>{% endif %}
+    {% set g_mgr = nav in ['assignments','import','import_external','automation','dryrun','audit','permissions','matrices'] %}
+    <details class="grp" data-grp="mgr" {{ 'open' if g_mgr }}>
+      <summary><span>Quản lý</span></summary>
+      <div class="subnav">
+        {% if me.can('shipments.assign') %}<a href="/assignments" class="{{ 'on' if nav=='assignments' }}"><span>Phân công</span></a>{% endif %}
+        {% if me.can('import.excel') %}<a href="/import" class="{{ 'on' if nav=='import' }}"><span>Nhập file Follow Up</span></a>
+        <a href="/import/external" class="{{ 'on' if nav=='import_external' }}"><span>Nhập Excel ngoài</span></a>{% endif %}
+        {% if me.can('automation.run') %}<a href="/automation" class="{{ 'on' if nav in ['automation','dryrun'] }}"><span>Automation</span></a>{% endif %}
+        {% if me.can('rules.view') %}<a href="/admin/matrices" class="{{ 'on' if nav=='matrices' }}"><span>5 bảng xương sống</span></a>{% endif %}
+        {% if me.can('audit.view') %}<a href="/audit" class="{{ 'on' if nav=='audit' }}"><span>Audit Log</span></a>
+        <a href="/admin/permissions" class="{{ 'on' if nav=='permissions' }}"><span>Phân quyền</span></a>{% endif %}
+      </div>
+    </details>
     {% endif %}
+
     {% if me.is_admin %}
-    <div class="sec">Quản trị</div>
-    <a href="/admin/users" class="{{ 'on' if nav=='users' }}"><span>Người dùng</span></a>
-    <a href="/mapping" class="{{ 'on' if nav=='mapping' }}"><span>Mapping</span></a>
-    <a href="/buyers" class="{{ 'on' if nav=='buyers' }}"><span>Buyer / Forwarder</span></a>
-    <a href="/backups" class="{{ 'on' if nav=='backups' }}"><span>Backup</span></a>
-    <a href="/settings" class="{{ 'on' if nav=='settings' }}"><span>Cài đặt</span></a>
+    {% set g_adm = nav in ['users','mapping','buyers','backups','settings'] %}
+    <details class="grp" data-grp="adm" {{ 'open' if g_adm }}>
+      <summary><span>Quản trị</span></summary>
+      <div class="subnav">
+        <a href="/admin/users" class="{{ 'on' if nav=='users' }}"><span>Nhân viên</span></a>
+        <a href="/mapping" class="{{ 'on' if nav=='mapping' }}"><span>Mapping</span></a>
+        <a href="/buyers" class="{{ 'on' if nav=='buyers' }}"><span>Buyer / Forwarder</span></a>
+        <a href="/backups" class="{{ 'on' if nav=='backups' }}"><span>Backup</span></a>
+        <a href="/settings" class="{{ 'on' if nav=='settings' }}"><span>Cài đặt</span></a>
+      </div>
+    </details>
     {% endif %}
   </nav>
 </aside>
@@ -74,7 +104,7 @@
 {% else %}
   {% block public %}{% endblock %}
 {% endif %}
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v={{ asset_v }}"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

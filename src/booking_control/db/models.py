@@ -177,12 +177,20 @@ class Shipment(Base):
         Index("ix_shipment_booking", "booking_no"),
         Index("ix_shipment_etd", "etd"),
         Index("ix_shipment_group", "group_key"),
+        # Quy mo 2000+ lo/thang: loc theo nguoi phu trach, dong bo "thay doi tu luc X",
+        # va loc lo dang hoat dong deu chay tren index thay vi quet ca bang.
+        Index("ix_shipment_backup_owner", "backup_owner"),
+        Index("ix_shipment_updated", "updated_at"),
+        Index("ix_shipment_live", "is_active", "archived", "exfty_date"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     shipment_code: Mapped[str] = mapped_column(String(40), unique=True)  # SHP-20260912-0001
     shipment_key: Mapped[str] = mapped_column(String(64))  # hash(user|no|jo|exfty)
     group_key: Mapped[str] = mapped_column(String(64), default="")  # gom lo de tinh container
+    # Export Shipment Group (SRSv5.1 muc 3): BUYER + EX-FACT DATE + DEST + MODE.
+    # KHAC `group_key` o tren - cai do la nhom de tinh container theo Buyer Rule.
+    export_group_key: Mapped[str] = mapped_column(String(32), default="", index=True)
 
     # Nguon goc (metadata - SRS muc 9)
     source_file_code: Mapped[str] = mapped_column(String(40))
@@ -282,6 +290,9 @@ class Shipment(Base):
     origin: Mapped[str] = mapped_column(String(10), default="EXCEL")  # EXCEL | WEB
     row_data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     field_src: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # {field: {src, by, at, excel}}
+    # Cong thuc nguoi dung go thang vao o tren luoi, kieu Excel: {field: "ROUND([Price]*0.95,2)"}
+    # Gia tri tinh ra van nam trong row_data; cong thuc duoc tinh lai moi lan dong thay doi.
+    cell_formulas: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     version: Mapped[int] = mapped_column(Integer, default=1)  # optimistic lock
     updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
     updated_by: Mapped[str] = mapped_column(String(80), default="")
@@ -290,6 +301,9 @@ class Shipment(Base):
     booking_status: Mapped[str] = mapped_column(String(20), default="NOT_BOOKED")
     hold_status: Mapped[str] = mapped_column(String(12), default="NO_HOLD")  # NO_HOLD | HOLD | RELEASED
     ship_status: Mapped[str] = mapped_column(String(20), default="NOT_SHIPPED")  # + PARTIALLY_/FULLY_SHIPPED
+    # Truc THU BA, doc lap voi Business Status va voi mau hien thi (SRSv5.1 muc 1, 16):
+    #   Status = NOT_BOOKED · Color = WHITE · Warning = BOOKING_DEADLINE_WARNING
+    deadline_warning: Mapped[str] = mapped_column(String(32), default="")
 
     invoices: Mapped[list[Invoice]] = relationship(back_populates="shipment", cascade="all,delete-orphan")
     declarations: Mapped[list[CustomsDeclaration]] = relationship(

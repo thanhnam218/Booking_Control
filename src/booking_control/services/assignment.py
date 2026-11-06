@@ -50,7 +50,7 @@ def assign(
     if to_user:
         u = active_users(s).get(to_user)
         if u is None:
-            raise AssignmentError(f"Người dùng '{to_user}' không tồn tại hoặc đã khóa")
+            raise AssignmentError(f"Nhân viên '{to_user}' không tồn tại hoặc đã khóa")
         if u.role not in ASSIGNABLE_ROLES:
             raise AssignmentError(f"'{to_user}' có vai trò {u.role} - không giao lô hàng được")
 

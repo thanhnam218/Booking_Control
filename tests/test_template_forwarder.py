@@ -50,9 +50,19 @@ def test_excel_round_is_half_up_not_bankers():
     assert round(0.125, 2) == 0.12  # Python lam tron kieu ngan hang - vi vay moi can excel_round
 
 
-def test_formula_translated_to_safe_js(tmpl):
+def test_formula_sent_to_grid_as_ast_not_code(tmpl):
+    """Luoi nhan CAY cong thuc, khong nhan chuoi ma JS -> trinh duyet khong eval() gi ca."""
     js = tmpl.formulas["DiscountPrice"].js()
-    assert js == {"kind": "expr", "code": 'R(M(F("Price"),0.95),2.0)', "refs": ["Price"]}
+    assert js["kind"] == "ast"
+    assert js["refs"] == ["Price"]
+    assert js["src"] == "ROUND([Price]*0.95,2)"
+    assert js["node"] == {
+        "t": "call", "n": "ROUND", "a": [
+            {"t": "bin", "o": "*", "l": {"t": "field", "f": "Price"}, "r": {"t": "num", "v": 0.95}},
+            {"t": "num", "v": 2.0},
+        ],
+    }
+    assert "code" not in js  # khong sinh ma nguon nua
     assert tmpl.formulas["ShipmentNo"].js()["kind"] == "invoice_suffix"
 
 

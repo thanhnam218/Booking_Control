@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Nhóm lô xuất - {{ app_name }}{% endblock %}
+{% block content %}
+<h2>Nhóm lô xuất</h2>
+<p class="page-sub">Các lô cùng <b>BUYER + EX-FACT DATE + DEST + MODE</b> được gom lại thành một nhóm,
+  tổng PCS / CTNS / G.W / CBM và số container dự kiến được cộng sẵn.
+  <br><b>Nhóm không phải booking</b> — một nhóm có thể được forwarder tách thành nhiều booking,
+  nên hệ thống chỉ gom và đề xuất, không tự tạo booking.</p>
+
+<div class="kpis">
+  <div><b>{{ totals.groups }}</b><span>nhóm</span></div>
+  <div><b>{{ totals.shipments }}</b><span>lô hàng</span></div>
+  <div><b>{{ totals.jo }}</b><span>JO</span></div>
+  <div><b>{{ '%.2f'|format(totals.cbm) }}</b><span>tổng CBM</span></div>
+</div>
+
+<form class="toolbar fu-filter" method="get" action="/groups">
+  <input name="buyer" value="{{ filters.get('buyer','') }}" list="g-buyers" placeholder="Mọi buyer" size="14">
+  <datalist id="g-buyers">{% for b in buyers %}<option value="{{ b }}">{% endfor %}</datalist>
+  <select name="mode"><option value="">Mọi mode</option>
+    {% for m in modes %}<option {{ 'selected' if filters.get('mode')==m }}>{{ m }}</option>{% endfor %}</select>
+  <label class="muted">EX-FACT từ <input type="date" name="date_from" value="{{ filters.get('date_from','') }}"></label>
+  <label class="muted">đến <input type="date" name="date_to" value="{{ filters.get('date_to','') }}"></label>
+  <button type="submit">Lọc</button>
+  <a href="/groups" class="btn ghost">Bỏ lọc</a>
+</form>
+
+<div class="card scroll-x">
+  <table class="gtable">
+    <thead><tr>
+      <th>EX-FACT</th><th>Hạn</th><th>Buyer</th><th>Dest</th><th>Mode</th>
+      <th class="right">Lô</th><th class="right">JO</th><th class="right">GO</th>
+      <th class="right">PCS</th><th class="right">CTNS</th><th class="right">G.W</th><th class="right">CBM</th>
+      <th>Container dự kiến</th><th>Booking</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for g in groups %}
+      <tr>
+        <td class="mono nowrap">{{ g.exfty.strftime('%d/%m/%Y') if g.exfty else '—' }}</td>
+        <td class="mono nowrap {{ 'late' if g.days is not none and g.days < 0 else ('soon' if g.days is not none and g.days <= 3 else '') }}">{{ g.deadline }}</td>
+        <td><b>{{ g.buyer }}</b></td>
+        <td>{{ g.dest or '—' }}</td>
+        <td>{{ g.mode or '—' }}</td>
+        <td class="right">{{ g.shipment_count }}</td>
+        <td class="right">{{ g.jo_count }}</td>
+        <td class="right">{{ g.go_count }}</td>
+        <td class="right mono">{{ '{:,.0f}'.format(g.total_pcs) if g.total_pcs else '—' }}</td>
+        <td class="right mono">{{ '{:,.0f}'.format(g.total_ctns) if g.total_ctns else '—' }}</td>
+        <td class="right mono">{{ '{:,.1f}'.format(g.total_gw) if g.total_gw else '—' }}</td>
+        <td class="right mono"><b>{{ '%.2f'|format(g.total_cbm) }}</b>
+          {% if g.missing_cbm %}<span class="tag late" title="{{ g.missing_cbm }} lô chưa có CBM — tổng chưa đủ">thiếu {{ g.missing_cbm }}</span>{% endif %}</td>
+        <td class="nowrap">{% if g.plan.quantities %}
+            {% for t, n in g.plan.quantities.items() %}{% if n %}<span class="ctag">{{ n }} × {{ t }}</span>{% endif %}{% endfor %}
+          {% else %}<span class="muted">{{ g.plan.type or '—' }}</span>{% endif %}
+          {% if g.plan.status == 'NEED_REVIEW' %}<span class="tag late">cần xem lại</span>{% endif %}</td>
+        <td>{% if g.bookings %}{% for b in g.bookings %}<span class="tag">{{ b }}</span>{% endfor %}
+            {% else %}<span class="muted">chưa có</span>{% endif %}</td>
+        <td><a href="/groups/{{ g.key }}">Xem</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="15" class="muted">Chưa có nhóm nào — chạy một lần quét hoặc nhập dữ liệu trước.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

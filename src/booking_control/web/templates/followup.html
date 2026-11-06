@@ -3,23 +3,29 @@
 {% block head %}
 <link rel="stylesheet" href="/static/vendor/jsuites.css">
 <link rel="stylesheet" href="/static/vendor/jspreadsheet.css">
-<link rel="stylesheet" href="/static/followup.css">
+<link rel="stylesheet" href="/static/followup.css?v={{ asset_v }}">
 {% endblock %}
 {% block content %}
 <div class="fu-head">
   <div>
     <h2>Follow Up</h2>
-    <p class="page-sub">Khung 47 cột giống file Follow Up &middot; sửa trực tiếp, tự lưu &middot;
-      <span class="lg fx">ô công thức</span> <span class="lg manual">đã sửa tay</span> <span class="lg ro">chỉ xem</span>
-      &middot; Ctrl+C / Ctrl+V dán từ Excel &middot; kéo góc ô để điền &middot; Ctrl+Z hoàn tác &middot; nhấp đúp tiêu đề để sắp xếp</p>
+    <p class="page-sub">Khung 47 cột giống file Follow Up &middot;
+      <span class="lg fx">ô công thức</span> <span class="lg cellfx">công thức bạn gõ</span>
+      <span class="lg manual">đã sửa tay</span> <span class="lg ro">chỉ xem</span>
+      <br><span class="muted" style="font-size:11.5px">Màu nền = trạng thái &middot;
+      <span class="lg warnbox">viền đỏ</span> = cảnh báo hạn booking (chưa book, còn dưới
+      {{ booking_warn_days }} ngày) — hai thứ này độc lập với nhau</span></p>
   </div>
-  <div id="save-state" class="save-state">Sẵn sàng</div>
+  <div class="fu-head-right">
+    <span id="peers" class="peers"></span>
+    <div id="save-state" class="save-state">Sẵn sàng</div>
+  </div>
 </div>
 
 <form class="toolbar fu-filter" method="get" action="/followup">
   <input name="q" value="{{ filters.get('q','') }}" placeholder="JO / NO / PO / Booking...">
-  <select name="buyer"><option value="">Mọi buyer</option>
-    {% for b in buyers %}<option {{ 'selected' if filters.get('buyer')==b }}>{{ b }}</option>{% endfor %}</select>
+  <input name="buyer" value="{{ filters.get('buyer','') }}" list="buyer-list" placeholder="Mọi buyer" size="14">
+  <datalist id="buyer-list">{% for b in buyers %}<option value="{{ b }}">{% endfor %}</datalist>
   <select name="status"><option value="">Mọi trạng thái</option>
     {% for k, m in status_meta.items() %}<option value="{{ k }}" {{ 'selected' if filters.get('status')==k }}>{{ k }} - {{ m[0] }}</option>{% endfor %}</select>
   {% if users %}
@@ -30,7 +36,8 @@
   <label class="muted">EX-FACT từ <input type="date" name="date_from" value="{{ filters.get('date_from','') }}"></label>
   <label class="muted">đến <input type="date" name="date_to" value="{{ filters.get('date_to','') }}"></label>
   <label class="muted"><input type="checkbox" name="hide_done" value="1" {{ 'checked' if filters.get('hide_done') }}> Ẩn lô đã xong / hủy</label>
-  <button type="submit">Lọc</button>
+  <label class="muted"><input type="checkbox" name="warn" value="1" {{ 'checked' if filters.get('warn') }}> Chỉ lô cảnh báo hạn booking</label>
+  <button type="submit">Lọc trên máy chủ</button>
   <a href="/followup" class="btn ghost">Bỏ lọc</a>
 </form>
 
@@ -42,18 +49,58 @@
       {% for u in users %}<option value="{{ u.name }}">{{ u.label }}</option>{% endfor %}
       <option value="__unassign__">(Bỏ phân công)</option></select>
     <select id="assign-kind"><option value="PRIMARY">Phụ trách chính</option><option value="BACKUP">Dự phòng</option></select>
-    <button type="button" id="btn-assign" class="ghost">Giao các dòng đang chọn</button>
+    <button type="button" id="btn-assign" class="ghost">Giao dòng đang chọn</button>
   {% endif %}
-  {% if me.can('shipments.archive') %}<button type="button" id="btn-archive" class="ghost">Lưu trữ dòng chọn</button>{% endif %}
+  {% if me.can('shipments.archive') %}<button type="button" id="btn-archive" class="ghost">Lưu trữ</button>{% endif %}
+  <span class="sep"></span>
+  <button type="button" id="btn-cols" class="ghost" title="Chọn cột hiện trên lưới">Cột</button>
+  <button type="button" id="btn-clear-filters" class="ghost" title="Bỏ mọi bộ lọc cột">Bỏ lọc cột</button>
+  <button type="button" id="btn-find" class="ghost" title="Ctrl+F">Tìm</button>
+  <button type="button" id="btn-replace" class="ghost" title="Ctrl+H">Thay thế</button>
+  <button type="button" id="btn-fill-down" class="ghost" title="Ctrl+D">Điền xuống</button>
+  <button type="button" id="btn-density" class="ghost">Dòng sát</button>
   <span class="sep"></span>
   <a class="btn ghost" id="btn-export-mine" href="/export/followup.xlsx?scope=mine">Xuất Excel lô của tôi</a>
-  {% if me.can('export.all') %}<a class="btn ghost" id="btn-export-filter" href="#">Xuất Excel theo bộ lọc</a>{% endif %}
+  {% if me.can('export.all') %}<a class="btn ghost" id="btn-export-filter" href="#">Xuất theo bộ lọc</a>{% endif %}
   <button type="button" id="btn-reload" class="ghost">Tải lại</button>
   <span id="row-count" class="muted" style="margin-left:auto"></span>
 </div>
 
+<div id="col-panel-wrap" class="card col-panel-wrap" hidden>
+  <div class="cp-head"><b>Cột hiện trên lưới</b>
+    <button type="button" id="btn-show-all-cols" class="btn-sm ghost">Hiện tất cả</button></div>
+  <div id="col-panel" class="col-panel"></div>
+</div>
+
+<div class="fx-bar">
+  <span id="fx-ref" class="fx-ref">—</span>
+  <span class="fx-sign">fx</span>
+  <input id="fx-input" placeholder="Giá trị, hoặc gõ =ROUND(W*0.95,2) để đặt công thức cho ô" disabled>
+  <span class="fx-help" title="Tham chiếu ô cùng dòng bằng chữ cột (W) hoặc [TênCột].
+Hàm: IF, SUM, MIN, MAX, AVERAGE, COUNT, ROUND, ROUNDUP, ROUNDDOWN, INT, ABS, MOD, POWER,
+LEFT, RIGHT, MID, LEN, TRIM, UPPER, LOWER, CONCAT, TODAY, DATE, YEAR, MONTH, DAY, DAYS...
+Chỉ tính trong cùng một dòng — tổng nhiều dòng xem ở thanh dưới lưới.">?</span>
+</div>
+
 <div id="grid-msg" class="flash warn" hidden></div>
 <div id="grid"></div>
+<div class="fu-statusbar"><span id="sel-stats"></span>
+  <span class="muted sb-hint">Ctrl+C / Ctrl+V dán từ Excel &middot; kéo góc ô để điền &middot; Ctrl+D điền xuống &middot;
+    Ctrl+Z hoàn tác &middot; bấm ▾ ở tiêu đề để lọc cột</span></div>
+
+<dialog id="dlg-find" class="fu-dialog">
+  <form method="dialog" class="stack">
+    <h3 style="margin:0">Tìm &amp; thay thế</h3>
+    <label>Tìm<input name="find" autocomplete="off"></label>
+    <label class="rep-row">Thay bằng<input name="rep" autocomplete="off"></label>
+    <p class="res muted" style="margin:0;font-size:12px"></p>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="ghost do-close">Đóng</button>
+      <button type="button" class="ghost do-find">Tìm</button>
+      <button type="button" class="do-replace">Thay tất cả</button>
+    </div>
+  </form>
+</dialog>
 
 <dialog id="dlg-add" class="fu-dialog">
   <form method="dialog" id="form-add" class="stack">
@@ -62,7 +109,6 @@
     <label>JO<input name="JO" required></label>
     <label>EX-FACT DATE<input name="ExFtyDate" type="date" required></label>
     <label>BUYER<input name="Buyer" list="buyer-list" required></label>
-    <datalist id="buyer-list">{% for b in buyers %}<option value="{{ b }}">{% endfor %}</datalist>
     <label>MODE<select name="ShipMode"><option>S</option><option>A</option></select></label>
     <label>CBM<input name="FinalCBM" inputmode="decimal"></label>
     <label>PO<input name="PO"></label>
@@ -82,5 +128,6 @@
 <script>window.GRID_CFG = {{ grid_cfg|tojson }};</script>
 <script src="/static/vendor/jsuites.js"></script>
 <script src="/static/vendor/jspreadsheet.js"></script>
-<script src="/static/followup.js"></script>
+<script src="/static/fx.js?v={{ asset_v }}"></script>
+<script src="/static/followup.js?v={{ asset_v }}"></script>
 {% endblock %}

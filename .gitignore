@@ -36,3 +36,13 @@ sample_data/*.xlsx
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# Log khi chay server o che do nen (scripts/start_server_hidden.vbs, Start-Process)
+server.out
+server.err
+pytest.out
+pytest.err
+
+# Cau hinh cuc bo cua Claude Code / IDE
+.claude/
+*.stackdump

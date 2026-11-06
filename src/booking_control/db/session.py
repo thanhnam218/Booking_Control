@@ -31,6 +31,10 @@ def init_engine(url: str, echo: bool = False) -> Engine:
             cur = dbapi_conn.cursor()
             cur.execute("PRAGMA journal_mode=WAL")
             cur.execute("PRAGMA foreign_keys=ON")
+            # Hang chuc nhan vien ghi cung luc: SQLite chi cho 1 nguoi ghi tai mot thoi diem.
+            # busy_timeout = cho toi da 15s thay vi bao ngay "database is locked".
+            cur.execute("PRAGMA busy_timeout=15000")
+            cur.execute("PRAGMA synchronous=NORMAL")
             cur.close()
 
     _rename_legacy_columns(_engine)

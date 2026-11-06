@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% block title %}Nhập Excel ngoài - {{ app_name }}{% endblock %}
+{% block content %}
+<h2>Nhập Excel ngoài</h2>
+<p class="page-sub">Dành cho file không theo khung Follow Up — ví dụ <b>Shipment schedule</b> hàng trăm cột.
+  Bạn chọn đúng những cột cần lấy, phần còn lại hệ thống không đọc tới. Lưu lại thành
+  <b>bộ map</b> để lần sau nhập một phát.</p>
+
+<div class="steps">
+  <span class="{{ 'on' if step=='upload' }}">1 · Tải file</span>
+  <span class="{{ 'on' if step=='map' }}">2 · Chọn cột</span>
+  <span class="{{ 'on' if step=='preview' }}">3 · Xem trước</span>
+  <span class="{{ 'on' if step=='done' }}">4 · Xong</span>
+</div>
+
+{% if error %}<div class="flash err">{{ error }}</div>{% endif %}
+
+{% if step == 'upload' %}
+<div class="card">
+  <h3>Tải file Excel lên</h3>
+  <form method="post" action="/import/external/inspect" enctype="multipart/form-data" class="inline">
+    <input type="file" name="file" accept=".xlsx,.xlsm" required>
+    <label class="muted">Lô hàng giao cho
+      <select name="owner">
+        {% for u in users %}<option value="{{ u.name }}" {{ 'selected' if u.name==me.name }}>{{ u.label }}</option>{% endfor %}
+      </select></label>
+    {% if profiles %}
+    <label class="muted">Dùng bộ map
+      <select name="profile_id"><option value="">(chọn cột thủ công)</option>
+        {% for p in profiles %}<option value="{{ p.id }}">{{ p.name }} · {{ p.cols }} cột</option>{% endfor %}
+      </select></label>
+    {% endif %}
+    <button type="submit">Đọc file</button>
+  </form>
+  <p class="muted" style="font-size:12px;margin-bottom:0">Tối đa 40MB. File được đọc, không bị sửa.
+    Ô lỗi công thức (#REF!, #N/A) được coi như ô trống.</p>
+</div>
+
+{% if profiles %}
+<div class="card">
+  <h3>Bộ map đã lưu</h3>
+  <table>
+    <thead><tr><th>Tên</th><th>Sheet</th><th class="right">Dòng tiêu đề</th><th class="right">Số cột</th>
+      <th class="right">Đã dùng</th><th>Người tạo</th><th></th></tr></thead>
+    <tbody>
+    {% for p in profiles %}
+      <tr><td><b>{{ p.name }}</b><div class="muted" style="font-size:11px">{{ p.note }}</div></td>
+        <td class="mono">{{ p.sheet or '(sheet đầu)' }}</td><td class="right mono">{{ p.header_row }}</td>
+        <td class="right">{{ p.cols }}</td><td class="right">{{ p.used }}</td><td class="muted">{{ p.by }}</td>
+        <td><form method="post" action="/import/external/profile/delete"
+              onsubmit="return confirm('Xóa bộ map {{ p.name }}?')">
+            <input type="hidden" name="profile_id" value="{{ p.id }}">
+            <button class="ghost btn-sm danger" type="submit">Xóa</button></form></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endif %}
+
+{% if step == 'map' and info %}
+<div class="card">
+  <form method="post" action="/import/external/map" class="inline">
+    <input type="hidden" name="token" value="{{ token }}">
+    <input type="hidden" name="filename" value="{{ filename }}">
+    <input type="hidden" name="owner" value="{{ owner }}">
+    <b>{{ filename }}</b>
+    <label class="muted">Sheet
+      <select name="sheet">
+        {% for sh in info.sheets %}<option value="{{ sh.name }}" {{ 'selected' if sh.name==info.sheet }}>{{ sh.name }} ({{ sh.cols }} cột)</option>{% endfor %}
+      </select></label>
+    <label class="muted">Dòng tiêu đề <input type="number" name="header_row" value="{{ info.header_row }}" min="1" max="50" style="width:64px"></label>
+    <button type="submit" class="ghost">Đọc lại</button>
+    <span class="muted">{{ info.data_rows }} dòng dữ liệu · {{ info.columns|length }} cột</span>
+  </form>
+</div>
+
+<form method="post" action="/import/external/preview" id="map-form">
+  <input type="hidden" name="token" value="{{ token }}">
+  <input type="hidden" name="filename" value="{{ filename }}">
+  <input type="hidden" name="sheet" value="{{ info.sheet }}">
+  <input type="hidden" name="header_row" value="{{ info.header_row }}">
+  <input type="hidden" name="mapping" id="mapping-json">
+
+  <div class="toolbar">
+    <label class="muted">Lô hàng giao cho
+      <select name="owner">
+        {% for u in users %}<option value="{{ u.name }}" {{ 'selected' if u.name==owner }}>{{ u.label }}</option>{% endfor %}
+      </select></label>
+    <label class="muted"><input type="checkbox" id="only-filled" checked> Chỉ hiện cột có dữ liệu</label>
+    <span id="map-count" class="muted"></span>
+    <button type="submit" style="margin-left:auto">Xem trước →</button>
+  </div>
+
+  <div class="card scroll-x">
+    <table class="maptable">
+      <thead><tr><th>Cột</th><th>Tiêu đề trong file</th><th class="right">Có dữ liệu</th>
+        <th>Giá trị mẫu</th><th>Đưa vào cột nào của hệ thống</th></tr></thead>
+      <tbody>
+      {% for c in info.columns %}
+        <tr class="maprow {{ 'empty-col' if not c.filled }}">
+          <td class="mono">{{ c.letter }}</td>
+          <td>{{ c.header or '—' }}</td>
+          <td class="right {{ 'muted' if not c.filled }}">{{ c.filled }}</td>
+          <td class="muted samples">{{ c.samples|join('  ·  ') }}</td>
+          <td><select class="mapsel" data-idx="{{ c.index }}">
+              <option value="">— không lấy —</option>
+              {% for f in fields %}<option value="{{ f.field }}" {{ 'selected' if f.field==c.chosen }}>{{ f.label }}</option>{% endfor %}
+            </select>
+            {% if c.suggestion and not c.chosen %}<span class="muted hint">gợi ý: {{ c.suggestion }} ({{ '%.0f'|format(c.confidence*100) }}%)</span>{% endif %}
+          </td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</form>
+<p class="muted" style="font-size:12px">Bắt buộc phải chọn <b>JO</b>, <b>EX-FACT DATE</b> và <b>BUYER</b> —
+  đó là khóa nhận dạng lô hàng. Hai cột không thể cùng đổ vào một cột hệ thống.</p>
+{% endif %}
+
+{% if step == 'preview' and result %}
+<div class="card">
+  <h3>Xem trước — chưa ghi gì vào hệ thống</h3>
+  <div class="kpis">
+    <div><b>{{ result.read }}</b><span>dòng đọc được</span></div>
+    <div><b class="ok">{{ result.new }}</b><span>thêm mới</span></div>
+    <div><b class="soon">{{ result['update'] }}</b><span>cập nhật</span></div>
+    <div><b class="{{ 'late' if result.skipped_total }}">{{ result.skipped_total }}</b><span>bỏ qua</span></div>
+  </div>
+  <p class="muted" style="font-size:12px">Sheet <b>{{ result.sheet }}</b> · dòng tiêu đề {{ result.header_row }}
+    · map: <span class="mono">{{ result.mapping }}</span></p>
+
+  <form method="post" action="/import/external/apply" class="inline">
+    <input type="hidden" name="token" value="{{ token }}">
+    <input type="hidden" name="filename" value="{{ filename }}">
+    <input type="hidden" name="owner" value="{{ owner }}">
+    <input type="hidden" name="sheet" value="{{ sheet }}">
+    <input type="hidden" name="header_row" value="{{ header_row }}">
+    <input type="hidden" name="mapping" value="{{ mapping_json }}">
+    <label class="muted"><input type="checkbox" name="save_profile" value="1" checked> Lưu thành bộ map tên</label>
+    <input name="profile_name" value="{{ profile_name or filename.rsplit('.',1)[0] }}" required>
+    <button type="submit">Nhập {{ result.new + result['update'] }} lô hàng</button>
+    <a href="/import/external" class="btn ghost">Hủy</a>
+  </form>
+</div>
+
+{% if result.skipped %}
+<details class="box">
+  <summary>{{ result.skipped_total }} dòng bị bỏ qua — vì sao</summary>
+  <table><thead><tr><th>Dòng</th><th>JO</th><th>EX-FACT</th><th>Lý do</th></tr></thead><tbody>
+    {% for sk in result.skipped %}
+    <tr><td class="mono">{{ sk.row }}</td><td class="mono">{{ sk.jo or '—' }}</td>
+      <td class="mono">{{ sk.exfty or '—' }}</td><td>{{ sk.reason }}</td></tr>
+    {% endfor %}
+  </tbody></table>
+</details>
+{% endif %}
+
+<div class="card scroll-x">
+  <h3>{{ result.preview|length }} dòng đầu</h3>
+  <table><thead><tr><th>Dòng</th><th>Thao tác</th><th>JO</th><th>EX-FACT</th><th>Buyer</th><th>NO</th></tr></thead><tbody>
+    {% for r in result.preview %}
+    <tr><td class="mono">{{ r.row }}</td>
+      <td><span class="st {{ 'OK' if r.action=='THEM MOI' else 'IN_PROGRESS' }}">{{ r.action }}</span></td>
+      <td class="mono">{{ r.jo }}</td><td class="mono">{{ r.exfty }}</td><td>{{ r.buyer }}</td><td>{{ r.no }}</td></tr>
+    {% endfor %}
+  </tbody></table>
+</div>
+{% endif %}
+
+{% if step == 'done' and result %}
+<div class="flash ok">Đã nhập xong: <b>{{ result.new }}</b> lô thêm mới, <b>{{ result['update'] }}</b> lô cập nhật
+  {% if result.skipped_total %}, {{ result.skipped_total }} dòng bỏ qua{% endif %}.</div>
+<div class="card">
+  <p>Xem kết quả: <a href="/followup">lưới Follow Up</a> · <a href="/shipments">danh sách lô hàng</a>
+    {% if result.get('auto_assigned') %}· {{ result.auto_assigned }} lô được tự phân công{% endif %}</p>
+  <a href="/import/external" class="btn ghost">Nhập file khác</a>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var form = document.getElementById("map-form");
+  if (!form) return;
+  var sels = Array.prototype.slice.call(form.querySelectorAll(".mapsel"));
+  var countEl = document.getElementById("map-count");
+
+  function refresh() {
+    var used = {}, dup = false, n = 0;
+    sels.forEach(function (s) {
+      s.classList.remove("dup");
+      if (!s.value) return;
+      n++;
+      if (used[s.value]) { dup = true; s.classList.add("dup"); used[s.value].classList.add("dup"); }
+      used[s.value] = s;
+    });
+    countEl.textContent = n + " cột được chọn" + (dup ? " — có cột trùng nhau, hãy sửa" : "");
+    countEl.className = dup ? "err-text" : "muted";
+    form.querySelector('button[type="submit"]').disabled = dup || n === 0;
+  }
+  sels.forEach(function (s) { s.addEventListener("change", refresh); });
+  refresh();
+
+  form.addEventListener("submit", function () {
+    var map = {};
+    sels.forEach(function (s) { if (s.value) map[s.getAttribute("data-idx")] = s.value; });
+    document.getElementById("mapping-json").value = JSON.stringify(map);
+  });
+
+  var only = document.getElementById("only-filled");
+  function applyOnly() {
+    form.querySelectorAll("tr.maprow").forEach(function (tr) {
+      if (!tr.classList.contains("empty-col")) return;
+      var picked = tr.querySelector(".mapsel").value;
+      tr.style.display = (only.checked && !picked) ? "none" : "";
+    });
+  }
+  only.addEventListener("change", applyOnly);
+  sels.forEach(function (s) { s.addEventListener("change", applyOnly); });
+  applyOnly();
+})();
+</script>
+{% endblock %}

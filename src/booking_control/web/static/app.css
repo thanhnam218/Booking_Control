@@ -124,3 +124,150 @@ details.box summary{cursor:pointer;font-weight:600}
 .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px 12px}
 .fields label{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted)}
 button:disabled{opacity:.35;cursor:not-allowed}
+
+/* ---- v3.1: menu chinh / menu con ---------------------------------------- */
+aside nav{padding-bottom:10px}
+aside nav a.nav-top{font-weight:600}
+aside nav details.grp{border:0}
+aside nav details.grp>summary{
+  list-style:none;cursor:pointer;font-size:13px;font-weight:600;color:var(--ink);
+  padding:8px 16px;display:flex;align-items:center;gap:6px;border-left:3px solid transparent;
+  user-select:none}
+aside nav details.grp>summary::-webkit-details-marker{display:none}
+aside nav details.grp>summary::after{
+  content:"";margin-left:auto;width:6px;height:6px;border-right:1.6px solid var(--muted);
+  border-bottom:1.6px solid var(--muted);transform:rotate(-45deg);transition:transform .15s}
+aside nav details.grp[open]>summary::after{transform:rotate(45deg)}
+aside nav details.grp>summary:hover{background:var(--accent-soft)}
+aside nav details.grp[open]>summary{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+/* Menu con: thut vao + co vach doc de phan biet voi menu chinh */
+aside nav .subnav{margin:0 0 6px 16px;border-left:1px solid var(--line);padding-left:0}
+aside nav .subnav a{padding:6px 12px 6px 14px;font-size:12.5px;border-left:3px solid transparent;margin-left:-1px}
+aside nav .subnav a.on{border-left-color:var(--accent)}
+/* Nhom co muc dang mo: danh dau ca o menu chinh */
+aside nav details.grp:has(a.on)>summary{color:var(--accent)}
+@media(max-width:1000px){
+  aside nav details.grp>summary{justify-content:center;padding:8px 4px}
+  aside nav details.grp>summary span{display:none}
+  aside nav .subnav{margin-left:6px}
+}
+
+/* ---- v3.1: nhap Excel ngoai -------------------------------------------- */
+.steps{display:flex;gap:6px;margin:0 0 14px;flex-wrap:wrap}
+.steps span{font-size:12px;padding:4px 12px;border-radius:14px;border:1px solid var(--line);color:var(--muted)}
+.steps span.on{border-color:var(--accent);color:var(--accent);background:var(--accent-soft);font-weight:600}
+.maptable{font-size:12.5px}
+.maptable td,.maptable th{padding:4px 8px}
+.maptable .samples{max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px}
+.maptable .mapsel{font-size:12px;padding:3px 6px;min-width:190px}
+.maptable .mapsel.dup{border-color:var(--red);background:#ffebee;color:#b71c1c}
+.maptable tr.empty-col td{opacity:.55}
+.maptable .hint{font-size:11px;margin-left:6px}
+.err-text{color:var(--red);font-size:12px}
+.kpis{display:flex;gap:26px;flex-wrap:wrap;margin:10px 0}
+.kpis div{display:flex;flex-direction:column}
+.kpis b{font-size:22px;line-height:1.1}
+.kpis b.ok{color:var(--green)} .kpis b.soon{color:var(--partial)} .kpis b.late{color:var(--red)}
+.kpis span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+
+/* ---- v3.1: phan cong truc quan ----------------------------------------- */
+.assign-count{display:flex;align-items:baseline;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.assign-count b{font-size:30px;line-height:1;color:var(--accent)}
+.assign-count span{font-size:12px;color:var(--muted)}
+#as-sample{font-size:12.5px}
+#as-sample td,#as-sample th{padding:3px 8px}
+
+.board{display:flex;gap:12px;align-items:flex-start;overflow-x:auto;padding-bottom:8px}
+.board-people{display:flex;gap:12px;align-items:flex-start}
+.board-col{flex:0 0 232px;background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  display:flex;flex-direction:column;max-height:62vh}
+.board-col.drop{border-style:dashed}
+.board-col.over{border-color:var(--accent);background:var(--accent-soft)}
+.board-head{display:flex;align-items:center;gap:8px;padding:9px 11px;border-bottom:1px solid var(--line);
+  font-size:12.5px;font-weight:600}
+.board-head .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pill-n{margin-left:auto;font-size:11px;background:var(--accent-soft);color:var(--accent);
+  border-radius:9px;padding:1px 7px;font-weight:700}
+.board-body{padding:8px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;min-height:80px}
+.board-body.hint{color:var(--muted);font-size:11.5px;align-items:center;justify-content:center;text-align:center}
+.gcard{border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:var(--bg);cursor:grab;
+  display:flex;flex-direction:column;gap:2px}
+.gcard:hover{border-color:var(--accent)}
+.gcard.dragging{opacity:.45}
+.gcard.urgent{border-left:3px solid var(--red)}
+.gcard b{font-size:12.5px}
+.gcard .wk{font-size:11px;color:var(--muted)}
+.gcard .n{font-size:11px;font-style:normal;font-weight:700;color:var(--accent)}
+
+/* ---- Ba truc doc lap: Status nghiep vu / Color / Deadline Warning (SRSv5.1 muc 1) ---- */
+.axes{display:flex;gap:26px;flex-wrap:wrap;margin:-6px 0 14px}
+.axes span{display:flex;flex-direction:column;gap:2px}
+.axes i{font-style:normal;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+.axes b{font-size:13px}
+.warn-chip{display:inline-block;padding:1px 9px;border-radius:10px;border:1.5px solid var(--red);
+  color:var(--red);font-size:12px}
+
+/* ---- Quan he JO - GO ---- */
+.gorow{padding:8px 0;border-bottom:1px solid var(--line)}
+.gorow:last-child{border-bottom:0}
+.gotag{display:inline-block;font-weight:700;font-size:12.5px;background:var(--accent-soft);
+  color:var(--accent);border-radius:8px;padding:2px 9px;margin-right:8px}
+.jolist{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.jochip{display:inline-block;font-size:12px;padding:2px 9px;border-radius:9px;
+  border:1px solid var(--line);color:var(--ink)}
+.jochip:hover{border-color:var(--accent);text-decoration:none}
+.jochip.me{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:600}
+.jochip i{font-style:normal;color:var(--partial);margin-left:3px;font-weight:700}
+
+/* ---- Nhom lo xuat (Export Shipment Group) ---- */
+.gtable{font-size:12.5px}
+.gtable td,.gtable th{padding:4px 8px}
+.ctag{display:inline-block;font-size:11.5px;font-weight:700;background:var(--accent-soft);
+  color:var(--accent);border-radius:7px;padding:1px 8px;margin-right:4px;white-space:nowrap}
+.ctag.big{font-size:17px;padding:4px 12px;border-radius:9px}
+.tag.late{border-color:var(--red);color:var(--red)}
+
+/* ---- Hang doi ngoai le "Exception Only" (SRSv5.5 muc 10) ---- */
+.exq{border-left:3px solid var(--red)}
+.exq.ok{border-left-color:var(--green)}
+.exq h3{margin-top:0}
+.exq-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:8px}
+.exq-item{display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;
+  column-gap:10px;align-items:center;padding:9px 12px;border:1px solid var(--line);
+  border-radius:9px;color:var(--ink)}
+.exq-item:hover{border-color:var(--accent);text-decoration:none;background:var(--accent-soft)}
+.exq-item b{grid-row:1 / span 2;font-size:24px;line-height:1;color:var(--partial)}
+.exq-item.crit b{color:var(--red)}
+.exq-item .t{font-size:12.5px;font-weight:600}
+.exq-item .h{font-size:11px;color:var(--muted);line-height:1.3}
+
+/* ---- 5 bang xuong song (SRSv4 muc 68) ---- */
+.pp{border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:10px}
+.pp-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px}
+.pp .gtable{margin-top:6px}
+.pp .gtable td{padding:2px 8px}
+.pp-contact{margin:8px 0 0 16px;padding-left:10px;border-left:2px solid var(--line)}
+#mx-tabs b{font-size:11px;background:var(--accent-soft);color:var(--accent);border-radius:9px;
+  padding:0 6px;margin-left:5px}
+
+/* ---- 5 bang xuong song (SRSv4 muc 68) ---- */
+.mx-issues{border-left:3px solid var(--partial)}
+.mx-list{margin:6px 0 0;padding-left:0;list-style:none}
+.mx-list li{font-size:12.5px;padding:5px 0;border-bottom:1px solid var(--line);line-height:1.45}
+.mx-list li:last-child{border-bottom:0}
+.mx-list .bg{display:inline-block;font-size:10px;font-weight:700;border-radius:7px;padding:1px 7px;
+  margin-right:8px;background:var(--accent-soft);color:var(--accent);white-space:nowrap}
+.mx-list li.err{color:var(--red)}
+.mx-list li.warn{color:var(--partial)}
+.mx-list li.info{color:var(--muted)}
+.gtable .own.edit{color:var(--green)}
+.gtable .own.review{color:var(--partial)}
+.gtable .own.view{color:var(--muted)}
+.gtable tr.contact-row{background:var(--accent-soft)}
+.mx-list .fix{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
+.mx-list li.error{color:var(--red)}
+.docline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:2px 0;font-size:12px}
+.docline .lbl{flex:1;min-width:120px}
+.ctag.unknown{background:#ffebee;color:#b71c1c}
+.own-tag{font-size:11px;border:1px solid var(--line);border-radius:8px;padding:0 7px;color:var(--muted)}
+.req-dot{color:var(--red);font-weight:700}

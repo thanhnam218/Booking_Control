@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Người dùng &amp; phân quyền</h2>
+<h2>Nhân viên &amp; phân quyền</h2>
 <p class="page-sub"><b>Quản trị</b>: toàn quyền &middot; <b>Quản lý</b>: xem tất cả lô, phân công, xử lý exception, nhập/xuất Excel &middot;
-  <b>Người dùng</b>: chỉ xem &amp; sửa lô được giao &middot; <b>Chỉ xem</b>: xem, không sửa. Tài khoản không bị xóa (giữ lịch sử) — chỉ khóa.</p>
+  <b>Nhân viên</b>: chỉ xem &amp; sửa lô được giao &middot; <b>Chỉ xem</b>: xem, không sửa. Tài khoản không bị xóa (giữ lịch sử) — chỉ khóa.</p>
 {% if msg %}<div class="flash ok">{{ msg }}</div>{% endif %}
 {% if error %}<div class="flash err">{{ error }}</div>{% endif %}
 {% if temp %}<div class="flash warn">Mật khẩu tạm của <b>{{ temp_user }}</b>: <code style="font-size:15px">{{ temp }}</code>

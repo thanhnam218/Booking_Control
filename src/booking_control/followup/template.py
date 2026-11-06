@@ -15,7 +15,6 @@ nen ba noi luon cho cung mot ket qua.
 
 from __future__ import annotations
 
-import ast
 import datetime as dt
 import re
 from dataclasses import dataclass, field
@@ -25,6 +24,7 @@ from typing import Any
 import yaml
 
 from ..core.normalize import apply_derived_rule, clean_text, parse_date, parse_decimal
+from . import fx
 
 ROLES = ("admin", "manager", "user", "viewer", "auditor")
 MANAGER_ROLES = ("admin", "manager")
@@ -45,12 +45,13 @@ class Formula:
     target: str
     kind: str  # expr | invoice_suffix
     expr: str = ""
-    tree: ast.AST | None = None
+    program: fx.Program | None = None
     refs: list[str] = field(default_factory=list)
     rule: dict[str, Any] = field(default_factory=dict)
 
     # -- Python ------------------------------------------------------------
-    def evaluate(self, values: dict[str, Any]) -> Any:
+    def evaluate(self, values: dict[str, Any], letter_to_field: dict[str, str] | None = None,
+                 today: dt.date | None = None) -> Any:
         if self.kind == "invoice_suffix":
             res = apply_derived_rule(self.rule, values.get(self.rule.get("source", "Invoice")))
             if res.value in (None, ""):
@@ -59,7 +60,7 @@ class Formula:
                 return int(res.value)
             except (TypeError, ValueError):
                 return None
-        return _eval(self.tree, values)
+        return fx.evaluate(self.program.node, _ctx(values, letter_to_field, today))
 
     # -- Excel ---------------------------------------------------------------
     def excel(self, letter_of: dict[str, str], row: int) -> str | None:
@@ -75,7 +76,10 @@ class Formula:
         missing = [r for r in self.refs if r not in letter_of]
         if missing:
             return None
-        return "=" + FIELD_RE.sub(lambda m: f"{letter_of[m.group(1)]}{row}", self.expr).replace(" ", "")
+        try:
+            return "=" + fx.to_excel(self.program.node, letter_of, row)
+        except fx.FxError:
+            return None
 
     # -- JavaScript ------------------------------------------------------------
     def js(self) -> dict[str, Any]:
@@ -84,42 +88,28 @@ class Formula:
                     "prefix": str(self.rule.get("prefix", "")),
                     "last_digits": int(self.rule.get("last_digits", 5)),
                     "offset": int(self.rule.get("offset", 0))}
-        return {"kind": "expr", "code": _to_js(self.tree), "refs": self.refs}
+        return {"kind": "ast", "node": self.program.node, "refs": self.refs,
+                "src": self.program.source}
 
 
-_ALLOWED_BIN = {ast.Add: "+", ast.Sub: "-", ast.Mult: "*", ast.Div: "/"}
+def _ctx(values: dict[str, Any], letter_to_field: dict[str, str] | None,
+         today: dt.date | None) -> fx.Ctx:
+    l2f = letter_to_field or {}
+
+    def by_letter(letter: str) -> Any:
+        fld = l2f.get(letter)
+        return values.get(fld) if fld else None
+
+    return fx.Ctx(field_value=values.get, letter_value=by_letter, today=today)
 
 
-def _compile_expr(target: str, expr: str, fields: set[str]) -> Formula:
-    refs = FIELD_RE.findall(expr)
-    unknown = [r for r in refs if r not in fields]
-    if unknown:
-        raise TemplateError(f"Cong thuc {target}: truong khong ton tai {unknown}")
-    py = FIELD_RE.sub(lambda m: f"f_{m.group(1)}", expr)
+def _compile_expr(target: str, expr: str, fields: set[str],
+                  letter_to_field: dict[str, str] | None = None) -> Formula:
     try:
-        tree = ast.parse(py, mode="eval")
-    except SyntaxError as exc:
-        raise TemplateError(f"Cong thuc {target} sai cu phap: {expr}") from exc
-    _validate(tree.body, target)
-    return Formula(target=target, kind="expr", expr=expr, tree=tree.body, refs=refs)
-
-
-def _validate(node: ast.AST, target: str) -> None:
-    if isinstance(node, ast.BinOp) and type(node.op) in _ALLOWED_BIN:
-        _validate(node.left, target)
-        _validate(node.right, target)
-    elif isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
-        _validate(node.operand, target)
-    elif isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
-        pass
-    elif isinstance(node, ast.Name) and node.id.startswith("f_"):
-        pass
-    elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "ROUND"
-          and len(node.args) == 2 and not node.keywords):
-        for a in node.args:
-            _validate(a, target)
-    else:
-        raise TemplateError(f"Cong thuc {target}: khong ho tro '{ast.dump(node)[:60]}'")
+        prog = fx.compile_expr(expr, fields, letter_to_field)
+    except fx.FxError as exc:
+        raise TemplateError(f"Cong thuc {target}: {exc}") from exc
+    return Formula(target=target, kind="expr", expr=prog.source, program=prog, refs=prog.refs)
 
 
 def _num(v: Any) -> float | None:
@@ -133,57 +123,7 @@ def _num(v: Any) -> float | None:
     return float(res.value) if res.value is not None else None
 
 
-def _eval(node: ast.AST | None, values: dict[str, Any]) -> float | None:
-    if node is None:
-        return None
-    if isinstance(node, ast.Constant):
-        return float(node.value)
-    if isinstance(node, ast.Name):
-        return _num(values.get(node.id[2:]))
-    if isinstance(node, ast.UnaryOp):
-        v = _eval(node.operand, values)
-        return None if v is None else (-v if isinstance(node.op, ast.USub) else v)
-    if isinstance(node, ast.BinOp):
-        a, b = _eval(node.left, values), _eval(node.right, values)
-        if a is None or b is None:
-            return None
-        if isinstance(node.op, ast.Add):
-            return a + b
-        if isinstance(node.op, ast.Sub):
-            return a - b
-        if isinstance(node.op, ast.Mult):
-            return a * b
-        return None if b == 0 else a / b
-    if isinstance(node, ast.Call):
-        a, n = _eval(node.args[0], values), _eval(node.args[1], values)
-        if a is None or n is None:
-            return None
-        return excel_round(a, int(n))
-    return None
-
-
-def excel_round(x: float, n: int) -> float:
-    """ROUND cua Excel: lam tron 0.5 ra xa so 0 (Python round() la banker's rounding)."""
-    from decimal import ROUND_HALF_UP, Decimal
-
-    q = Decimal(1).scaleb(-n)
-    return float(Decimal(repr(x)).quantize(q, rounding=ROUND_HALF_UP))
-
-
-def _to_js(node: ast.AST | None) -> str:
-    if isinstance(node, ast.Constant):
-        return repr(float(node.value))
-    if isinstance(node, ast.Name):
-        return f'F("{node.id[2:]}")'
-    if isinstance(node, ast.UnaryOp):
-        inner = _to_js(node.operand)
-        return f"M(-1,{inner})" if isinstance(node.op, ast.USub) else inner
-    if isinstance(node, ast.BinOp):
-        fn = {ast.Add: "A", ast.Sub: "S", ast.Mult: "M", ast.Div: "D"}[type(node.op)]
-        return f"{fn}({_to_js(node.left)},{_to_js(node.right)})"
-    if isinstance(node, ast.Call):
-        return f"R({_to_js(node.args[0])},{_to_js(node.args[1])})"
-    raise TemplateError("bieu thuc khong hop le")
+excel_round = fx.excel_round  # giu ten cu cho code / test dang dung
 
 
 # ---------------------------------------------------------------------------
@@ -272,6 +212,10 @@ class FollowUpTemplate:
             raise TemplateError("Template co 2 cot trung field")
 
         fields = set(self.by_field)
+        # Cot -> chu cot Excel (A, B, ... AU) de cong thuc viet duoc ca hai kieu:
+        #   [Price]*0.95   hoac   W*0.95
+        self.letter_to_field: dict[str, str] = {c.letter: c.field for c in self.columns}
+        self.letter_of: dict[str, str] = {c.field: c.letter for c in self.columns}
         derived_fields = derived_fields or {}
         self.formulas: dict[str, Formula] = {}
         for target, spec in (data.get("formulas") or {}).items():
@@ -285,12 +229,15 @@ class FollowUpTemplate:
                 rule.setdefault("source", "Invoice")
                 f = Formula(target=target, kind="invoice_suffix", rule=rule, refs=[rule["source"]])
             else:
-                f = _compile_expr(target, str(spec.get("expr", "")), fields)
+                f = _compile_expr(target, str(spec.get("expr", "")), fields,
+                                  self.letter_to_field)
             self.formulas[target] = f
             self.by_field[target].formula = f
         self.formula_order = self._topo_order()
 
         self.system_columns = [SystemColumn(**x) for x in data.get("system_columns", [])]
+        # Cong thuc nguoi dung go vao o: phan tich mot lan roi dung lai
+        self._fx_cache: dict[str, fx.Program] = {}
 
     # ------------------------------------------------------------------
 
@@ -400,7 +347,7 @@ class FollowUpTemplate:
     # -- cong thuc ---------------------------------------------------------
 
     def compute_formulas(self, values: dict[str, Any], skip: set[str] | None = None,
-                         only_missing: bool = False) -> dict[str, Any]:
+                         only_missing: bool = False, today: dt.date | None = None) -> dict[str, Any]:
         """Tinh lai cac cot cong thuc theo thu tu phu thuoc. Tra ve dict cac gia tri moi."""
         skip = skip or set()
         out: dict[str, Any] = {}
@@ -410,7 +357,7 @@ class FollowUpTemplate:
                 continue
             if only_missing and work.get(name) not in (None, ""):
                 continue
-            v = self.formulas[name].evaluate(work)
+            v = self.formulas[name].evaluate(work, self.letter_to_field, today)
             if isinstance(v, float) and v == int(v) and abs(v) < 1e15:
                 v = int(v)
             elif isinstance(v, float):
@@ -434,6 +381,64 @@ class FollowUpTemplate:
             if cur in (None, "") or _same_value(cur, computed.get(name)):
                 live.add(name)
         return live
+
+    # -- cong thuc nguoi dung go thang vao o --------------------------------
+
+    def compile_cell_formula(self, expr: str) -> fx.Program:
+        """Cong thuc kieu Excel nguoi dung go vao mot o cua luoi (vd "=ROUND(W*0.95,2)").
+
+        Chi tham chieu duoc cac o CUNG DONG, nen khong cho viet so dong (W5) - luoi con
+        sap xep lai duoc nen so dong khong co y nghia on dinh.
+        """
+        prog = self._fx_cache.get(expr)
+        if prog is None:
+            prog = fx.compile_expr(expr, set(self.by_field), self.letter_to_field)
+            if len(self._fx_cache) > 2000:
+                self._fx_cache.clear()
+            self._fx_cache[expr] = prog
+        return prog
+
+    def cell_formula_order(self, cell_fx: dict[str, str]) -> list[str]:
+        """Thu tu tinh cac o co cong thuc rieng. Nem FxError neu cong thuc tham chieu vong."""
+        progs: dict[str, fx.Program] = {}
+        for fld, expr in cell_fx.items():
+            if fld in self.by_field:
+                progs[fld] = self.compile_cell_formula(expr)
+        order: list[str] = []
+        state: dict[str, int] = {}
+
+        def visit(name: str, trail: list[str]) -> None:
+            if state.get(name) == 2:
+                return
+            if state.get(name) == 1:
+                loop = " -> ".join(self.by_field[x].label for x in [*trail, name])
+                raise fx.FxError(f"Công thức tham chiếu vòng: {loop}")
+            state[name] = 1
+            for r in progs[name].refs:
+                if r in progs:
+                    visit(r, [*trail, name])
+            state[name] = 2
+            order.append(name)
+
+        for name in progs:
+            visit(name, [])
+        return order
+
+    def apply_cell_formulas(self, values: dict[str, Any], cell_fx: dict[str, str],
+                            today: dt.date | None = None) -> dict[str, Any]:
+        """Tinh lai cac o co cong thuc rieng cua mot dong. Tra ve cac gia tri moi."""
+        if not cell_fx:
+            return {}
+        out: dict[str, Any] = {}
+        work = dict(values)
+        for fld in self.cell_formula_order(cell_fx):
+            prog = self.compile_cell_formula(cell_fx[fld])
+            v = fx.evaluate(prog.node, _ctx(work, self.letter_to_field, today))
+            if isinstance(v, float):
+                v = int(v) if v == int(v) and abs(v) < 1e15 else round(v, 6)
+            value, err = self.parse(fld, v) if not isinstance(v, (dt.date, bool)) else (v, "")
+            work[fld] = out[fld] = v if err else value
+        return out
 
     # -- cau hinh gui cho luoi (JS) ----------------------------------------
 

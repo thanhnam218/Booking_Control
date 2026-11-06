@@ -1,14 +1,88 @@
 {% extends "base.html" %}
+{% block title %}Phân công - {{ app_name }}{% endblock %}
 {% block content %}
 <h2>Phân công lô hàng</h2>
-<p class="page-sub">Giao / giao lại / giao hàng loạt theo Buyer, Forwarder, EX-FACT, Mode. Mỗi lần giao đều lưu lịch sử và báo cho người được giao.
+<p class="page-sub">Giao hàng trăm lô một lần bằng bộ lọc, hoặc kéo cả nhóm lô sang cột của nhân viên.
+  Mỗi lần giao đều lưu lịch sử và báo cho người được giao.
   Automation chỉ tự giao lô <b>mới chưa có người phụ trách</b> — không bao giờ đổi người bạn đã giao.</p>
 
+<div class="tabs" id="as-tabs">
+  <a href="#" class="on" data-tab="bulk">Giao theo bộ lọc</a>
+  <a href="#" data-tab="board">Bảng kéo–thả</a>
+  <a href="#" data-tab="team">Tải công việc</a>
+</div>
+
+<!-- =============================== GIAO THEO BO LOC ======================= -->
+<section data-pane="bulk">
 <div class="card">
-  <h3>Team Workload</h3>
+  <h3>1 · Chọn lô hàng</h3>
+  <form id="bulk-filter" class="inline">
+    <input name="q" placeholder="JO / PO / Booking..." size="16">
+    <input name="buyer" list="as-buyers" placeholder="Mọi buyer" size="13">
+    <datalist id="as-buyers">{% for b in opts.buyers %}<option value="{{ b }}">{% endfor %}</datalist>
+    <select name="forwarder"><option value="">Mọi forwarder</option>{% for f in opts.forwarders %}<option>{{ f }}</option>{% endfor %}</select>
+    <select name="mode"><option value="">Mọi mode</option>{% for m in opts.modes %}<option>{{ m }}</option>{% endfor %}</select>
+    <select name="status"><option value="">Mọi trạng thái</option>{% for st in opts.statuses %}<option>{{ st }}</option>{% endfor %}</select>
+    <select name="assigned"><option value="__none__">Chỉ lô chưa phân công</option>
+      <option value="">Mọi lô (kể cả đã giao)</option>
+      {% for n, l in users %}<option value="{{ n }}">Đang của {{ l }}</option>{% endfor %}</select>
+    <label class="muted">EX-FACT từ <input type="date" name="date_from"></label>
+    <label class="muted">đến <input type="date" name="date_to"></label>
+    <label class="muted"><input type="checkbox" name="hide_done" value="1" checked> Bỏ lô đã xong / hủy</label>
+  </form>
+</div>
+
+<div class="card">
+  <h3>2 · Kiểm tra sẽ giao những gì</h3>
+  <div class="assign-count"><b id="as-total">—</b> <span>lô khớp bộ lọc</span>
+    <span id="as-current" class="muted"></span></div>
+  <div class="scroll-x"><table id="as-sample"><thead><tr><th>JO</th><th>Buyer</th><th>EX-FACT</th>
+    <th>Mode</th><th>Trạng thái</th><th>Đang của</th></tr></thead><tbody></tbody></table></div>
+  <p class="muted" style="font-size:12px" id="as-more"></p>
+</div>
+
+<div class="card">
+  <h3>3 · Giao</h3>
+  <form id="bulk-assign" class="inline">
+    <select name="to_user" required><option value="">— Giao cho —</option>
+      {% for n, l in users %}<option value="{{ n }}">{{ l }}</option>{% endfor %}
+      <option value="__unassign__">(Bỏ phân công)</option></select>
+    <select name="kind"><option value="PRIMARY">Phụ trách chính</option><option value="BACKUP">Dự phòng</option></select>
+    <input name="note" placeholder="Ghi chú (tùy chọn)" size="26">
+    <button type="submit" id="as-go" disabled>Giao</button>
+    <span id="bulk-msg" class="muted"></span>
+  </form>
+</div>
+</section>
+
+<!-- =============================== BANG KEO THA =========================== -->
+<section data-pane="board" hidden>
+<div class="card">
+  <div class="inline" style="margin-bottom:0">
+    <b>Kéo thẻ nhóm lô thả vào cột nhân viên</b>
+    <label class="muted"><input type="radio" name="bscope" value="unassigned" checked> Chỉ lô chưa phân công</label>
+    <label class="muted"><input type="radio" name="bscope" value="all"> Tất cả lô đang theo dõi</label>
+    <span id="board-msg" class="muted" style="margin-left:auto"></span>
+  </div>
+  <p class="muted" style="font-size:12px;margin:6px 0 0">Mỗi thẻ là một nhóm <b>buyer + tuần EX-FACT</b>.
+    Con số trên thẻ là số lô sẽ được giao khi thả — kéo một lần là giao cả trăm lô.</p>
+</div>
+<div class="board">
+  <div class="board-col" id="pool-col">
+    <div class="board-head">Chưa phân công <span id="pool-n" class="pill-n">0</span></div>
+    <div class="board-body" id="pool"></div>
+  </div>
+  <div class="board-people" id="people"></div>
+</div>
+</section>
+
+<!-- =============================== TAI CONG VIEC ========================== -->
+<section data-pane="team" hidden>
+<div class="card">
+  <h3>Tải công việc</h3>
   <table>
-    <thead><tr><th>Người phụ trách</th><th class="right">Đang theo dõi</th><th class="right">Quá hạn</th><th class="right">≤ 3 ngày</th>
-      <th class="right">Chưa book</th><th class="right">Hold</th><th>Tải</th><th></th></tr></thead>
+    <thead><tr><th>Người phụ trách</th><th class="right">Đang theo dõi</th><th class="right">Quá hạn</th>
+      <th class="right">≤ 3 ngày</th><th class="right">Chưa book</th><th class="right">Hold</th><th>Tải</th><th></th></tr></thead>
     <tbody>
     {% set maxv = (team|map(attribute='total')|max) if team else 1 %}
     {% for u in team %}
@@ -19,7 +93,7 @@
         <td class="right {{ 'soon' if u.due3 }}">{{ u.due3 }}</td>
         <td class="right">{{ u.white }}</td>
         <td class="right">{{ u.hold }}</td>
-        <td style="width:160px"><div class="bar"><i style="width:{{ (100 * u.total / (maxv or 1))|round|int }}%"></i></div></td>
+        <td style="width:170px"><div class="bar"><i style="width:{{ (100 * u.total / (maxv or 1))|round|int }}%"></i></div></td>
         <td><a href="/followup?assigned={{ u.user or '__none__' }}">Mở lưới</a></td>
       </tr>
     {% endfor %}
@@ -27,64 +101,188 @@
   </table>
 </div>
 
-<div class="card">
-  <h3>Giao hàng loạt theo điều kiện</h3>
-  <form id="bulk" class="inline">
-    <select name="buyer"><option value="">Mọi buyer</option>{% for b in opts.buyers %}<option>{{ b }}</option>{% endfor %}</select>
-    <select name="forwarder"><option value="">Mọi forwarder</option>{% for f in opts.forwarders %}<option>{{ f }}</option>{% endfor %}</select>
-    <select name="mode"><option value="">Mọi mode</option>{% for m in opts.modes %}<option>{{ m }}</option>{% endfor %}</select>
-    <label class="muted">EX-FACT từ <input type="date" name="date_from"></label>
-    <label class="muted">đến <input type="date" name="date_to"></label>
-    <label class="muted"><input type="checkbox" name="only_unassigned" value="1" checked> Chỉ lô chưa phân công</label>
-    <span>&rarr;</span>
-    <select name="to_user" required><option value="">— Giao cho —</option>{% for n, l in users %}<option value="{{ n }}">{{ l }}</option>{% endfor %}</select>
-    <select name="kind"><option value="PRIMARY">Phụ trách chính</option><option value="BACKUP">Dự phòng</option></select>
-    <button type="submit">Giao</button>
-    <span id="bulk-msg" class="muted"></span>
-  </form>
-</div>
-
 <div class="two">
   <div class="card scroll-x">
-    <h3>Chưa phân công ({{ unassigned|length }})</h3>
-    <table>
-      <thead><tr><th>JO</th><th>Buyer</th><th>EX-FACT</th><th>Mode</th><th>Forwarder</th><th>File của</th><th>Status</th></tr></thead>
-      <tbody>
-      {% for r in unassigned %}
-        <tr><td><a class="mono" href="/shipments/{{ r.code }}">{{ r.jo or r.code }}</a></td><td>{{ r.buyer }}</td>
-          <td class="mono">{{ r.exfty.strftime('%d/%m') if r.exfty else '-' }}</td><td>{{ r.mode }}</td><td>{{ r.forwarder }}</td>
-          <td class="muted">{{ r.owner }}</td><td><span class="pill {{ r.status }}">{{ r.status }}</span></td></tr>
-      {% else %}<tr><td colspan="7" class="muted">Tất cả lô đã có người phụ trách</td></tr>{% endfor %}
-      </tbody>
-    </table>
-  </div>
-  <div class="card scroll-x">
-    <h3>Lịch sử gần đây</h3>
+    <h3>Lịch sử giao gần đây</h3>
     <table><tbody>
     {% for h in history %}
-      <tr><td class="mono nowrap">{{ h.ts.strftime('%d/%m %H:%M') }}</td><td><a class="mono" href="/shipments/{{ h.code }}">{{ h.code }}</a></td>
-        <td>{{ h.from or '—' }} &rarr; <b>{{ h.to or '(bỏ)' }}</b> <span class="tag">{{ h.kind }}</span></td><td class="muted">{{ h.by }} · {{ h.method }}</td></tr>
+      <tr><td class="mono nowrap">{{ h.ts.strftime('%d/%m %H:%M') }}</td>
+        <td><a class="mono" href="/shipments/{{ h.code }}">{{ h.code }}</a></td>
+        <td>{{ h.from or '—' }} &rarr; <b>{{ h.to or '(bỏ)' }}</b> <span class="tag">{{ h.kind }}</span></td>
+        <td class="muted">{{ h.by }} · {{ h.method }}</td></tr>
     {% else %}<tr><td class="muted">Chưa có</td></tr>{% endfor %}
     </tbody></table>
+  </div>
+  <div class="card scroll-x">
+    <h3>Rule tự giao <span class="muted" style="font-size:11px">(config.yaml &gt; assignment.rules)</span></h3>
     {% if rules %}
-    <h3 style="margin-top:14px">Rule tự giao (config.yaml &gt; assignment.rules)</h3>
-    <table><tbody>{% for r in rules %}<tr><td>{{ r.buyer|join(', ') or '*' }} / {{ r.forwarder|join(', ') or '*' }} / {{ r.mode|join(', ') or '*' }}</td><td>&rarr; <b>{{ r.user }}</b>{% if r.backup %} (dự phòng {{ r.backup }}){% endif %}</td></tr>{% endfor %}</tbody></table>
-    {% endif %}
+    <table><tbody>{% for r in rules %}<tr>
+      <td>{{ r.buyer|join(', ') or '*' }} / {{ r.forwarder|join(', ') or '*' }} / {{ r.mode|join(', ') or '*' }}</td>
+      <td>&rarr; <b>{{ r.user }}</b>{% if r.backup %} (dự phòng {{ r.backup }}){% endif %}</td></tr>{% endfor %}</tbody></table>
+    {% else %}<p class="muted">Chưa có rule nào — lô mới sẽ giao cho chủ file Follow Up.</p>{% endif %}
   </div>
 </div>
+</section>
 {% endblock %}
+
 {% block scripts %}
 <script>
-document.getElementById("bulk").addEventListener("submit", function (e) {
-  e.preventDefault();
-  var fd = new FormData(e.target), f = {};
-  ["buyer", "forwarder", "mode", "date_from", "date_to"].forEach(function (k) { if (fd.get(k)) f[k] = fd.get(k); });
-  if (fd.get("only_unassigned")) f.assigned = "__none__";
-  var msg = document.getElementById("bulk-msg");
-  if (!window.confirm("Giao tất cả lô khớp điều kiện cho " + fd.get("to_user") + "?")) return;
-  BC.api("/api/followup/assign", { by_filter: f, to_user: fd.get("to_user"), kind: fd.get("kind") })
-    .then(function (r) { msg.textContent = "Đã giao " + r.changed + " lô (" + r.unchanged + " lô không đổi)"; setTimeout(function () { location.reload(); }, 900); })
-    .catch(function (err) { msg.textContent = "Lỗi: " + err.message; });
-});
+(function () {
+  "use strict";
+
+  /* ---- chuyen tab ---- */
+  var tabs = document.querySelectorAll("#as-tabs a");
+  tabs.forEach(function (a) {
+    a.addEventListener("click", function (e) {
+      e.preventDefault();
+      tabs.forEach(function (x) { x.classList.toggle("on", x === a); });
+      document.querySelectorAll("section[data-pane]").forEach(function (s) {
+        s.hidden = s.getAttribute("data-pane") !== a.getAttribute("data-tab");
+      });
+      if (a.getAttribute("data-tab") === "board") loadBoard();
+    });
+  });
+
+  /* ---- 1+2: bo loc + xem truoc ---- */
+  var filterForm = document.getElementById("bulk-filter");
+  var totalEl = document.getElementById("as-total");
+  var currentEl = document.getElementById("as-current");
+  var sampleBody = document.querySelector("#as-sample tbody");
+  var moreEl = document.getElementById("as-more");
+  var goBtn = document.getElementById("as-go");
+  var lastTotal = 0, timer = null;
+
+  function filterQuery() {
+    var fd = new FormData(filterForm), q = new URLSearchParams();
+    fd.forEach(function (v, k) { if (v) q.set(k, v); });
+    return q;
+  }
+  function refresh() {
+    var q = filterQuery();
+    BC.api("/api/assign/preview?" + q.toString()).then(function (d) {
+      lastTotal = d.total;
+      totalEl.textContent = d.total.toLocaleString("vi-VN");
+      goBtn.disabled = !d.total;
+      currentEl.textContent = d.current.length
+        ? "· đang của: " + d.current.slice(0, 5).map(function (c) { return c.label + " (" + c.n + ")"; }).join(", ")
+        : "";
+      sampleBody.innerHTML = "";
+      d.sample.forEach(function (r) {
+        var tr = document.createElement("tr");
+        [r.jo, r.buyer, r.exfty, r.mode, r.status, r.owner].forEach(function (v, i) {
+          var td = document.createElement("td");
+          td.textContent = v || "—";
+          if (i === 0) td.className = "mono";
+          tr.appendChild(td);
+        });
+        sampleBody.appendChild(tr);
+      });
+      moreEl.textContent = d.total > d.sample.length
+        ? "… và " + (d.total - d.sample.length).toLocaleString("vi-VN") + " lô nữa sẽ được giao cùng lúc."
+        : "";
+    }).catch(function (e) { totalEl.textContent = "lỗi"; moreEl.textContent = e.message; });
+  }
+  filterForm.addEventListener("input", function () { clearTimeout(timer); timer = setTimeout(refresh, 250); });
+  filterForm.addEventListener("change", function () { clearTimeout(timer); timer = setTimeout(refresh, 100); });
+  refresh();
+
+  /* ---- 3: giao ---- */
+  document.getElementById("bulk-assign").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var fd = new FormData(e.target);
+    var to = fd.get("to_user");
+    var f = {};
+    filterQuery().forEach(function (v, k) { f[k] = v; });
+    var label = e.target.querySelector('[name="to_user"]').selectedOptions[0].textContent;
+    if (!window.confirm("Giao " + lastTotal + " lô cho " + label + "?")) return;
+    var msg = document.getElementById("bulk-msg");
+    msg.textContent = "Đang giao " + lastTotal + " lô...";
+    BC.api("/api/followup/assign", {
+      by_filter: f, to_user: to === "__unassign__" ? "" : to,
+      kind: fd.get("kind"), note: fd.get("note") || ""
+    }).then(function (r) {
+      msg.textContent = "✓ Đã giao " + r.changed + " lô" + (r.unchanged ? " (" + r.unchanged + " lô vốn đã đúng người)" : "");
+      refresh();
+    }).catch(function (err) { msg.textContent = "Lỗi: " + err.message; });
+  });
+
+  /* ---- bang keo tha ---- */
+  var pool = document.getElementById("pool"), people = document.getElementById("people");
+  var boardMsg = document.getElementById("board-msg");
+  var dragData = null;
+
+  function loadBoard(keepMsg) {
+    var scope = document.querySelector('[name="bscope"]:checked').value;
+    if (!keepMsg) boardMsg.textContent = "Đang tải...";
+    return BC.api("/api/assign/board?scope=" + scope).then(function (d) {
+      pool.innerHTML = "";
+      var n = 0;
+      d.groups.forEach(function (g) {
+        n += g.n;
+        pool.appendChild(card(g));
+      });
+      document.getElementById("pool-n").textContent = n.toLocaleString("vi-VN");
+      people.innerHTML = "";
+      d.team.filter(function (u) { return u.user; }).forEach(function (u) {
+        people.appendChild(personCol(u));
+      });
+      if (!keepMsg) {
+        boardMsg.textContent = d.total_groups > d.groups.length
+          ? "Hiện " + d.groups.length + "/" + d.total_groups + " nhóm (lọc bớt bằng tab Giao theo bộ lọc)" : "";
+      }
+    }).catch(function (e) { boardMsg.textContent = "Lỗi: " + e.message; });
+  }
+  document.querySelectorAll('[name="bscope"]').forEach(function (r) {
+    r.addEventListener("change", loadBoard);
+  });
+
+  function card(g) {
+    var d = document.createElement("div");
+    d.className = "gcard" + (g.urgent ? " urgent" : "");
+    d.draggable = true;
+    d.innerHTML = '<b></b><span class="wk"></span><i class="n"></i>';
+    d.querySelector("b").textContent = g.buyer;
+    d.querySelector(".wk").textContent = g.week;
+    d.querySelector(".n").textContent = g.n + " lô" + (g.urgent ? " · " + g.urgent + " gấp" : "");
+    d.addEventListener("dragstart", function (e) {
+      dragData = g;
+      d.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", g.buyer);
+    });
+    d.addEventListener("dragend", function () { d.classList.remove("dragging"); dragData = null; });
+    return d;
+  }
+
+  function personCol(u) {
+    var col = document.createElement("div");
+    col.className = "board-col drop";
+    col.innerHTML = '<div class="board-head"><span class="nm"></span><span class="pill-n"></span></div>' +
+      '<div class="board-body hint">Thả nhóm lô vào đây</div>';
+    col.querySelector(".nm").textContent = u.label;
+    col.querySelector(".pill-n").textContent = u.total;
+    col.addEventListener("dragover", function (e) { e.preventDefault(); col.classList.add("over"); });
+    col.addEventListener("dragleave", function () { col.classList.remove("over"); });
+    col.addEventListener("drop", function (e) {
+      e.preventDefault();
+      col.classList.remove("over");
+      if (!dragData) return;
+      var g = dragData;
+      if (!window.confirm("Giao " + g.n + " lô (" + g.buyer + " · " + g.week + ") cho " + u.label + "?")) return;
+      var f = { buyer: g.buyer, assigned: "__none__", hide_done: "1" };
+      if (g.date_from) { f.date_from = g.date_from; f.date_to = g.date_to; }
+      if (document.querySelector('[name="bscope"]:checked').value === "all") delete f.assigned;
+      boardMsg.textContent = "Đang giao " + g.n + " lô...";
+      BC.api("/api/followup/assign", { by_filter: f, to_user: u.user, kind: "PRIMARY" })
+        .then(function (r) {
+          return loadBoard(true).then(function () {
+            boardMsg.textContent = "✓ Đã giao " + r.changed + " lô cho " + u.label
+              + (r.unchanged ? " (" + r.unchanged + " lô vốn đã đúng người)" : "");
+          });
+        }).catch(function (err) { boardMsg.textContent = "Lỗi: " + err.message; });
+    });
+    return col;
+  }
+})();
 </script>
 {% endblock %}

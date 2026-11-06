@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from ..audit import log_audit, raise_exception
 from ..core import email_match as em
 from ..core import email_parse as ep
+from ..core import parser_profile as pp
 from ..core.normalize import norm_key
 from ..db.models import Notification, Shipment, utcnow
 from ..db.models_v3 import Booking, BookingShipment, ConversationLink, Email, EmailAttachment
@@ -51,6 +52,8 @@ class EmailProcessor:
         self.categories: dict[str, list[str]] = cfg.get("categories") or {}
         self.base_aliases = cfg.get("field_aliases") or {}
         self.forwarders = cfg.get("forwarders") or []
+        # Parser Profile tung Forwarder (BR-020): khong dung chung mot parser cho tat ca
+        self.parser_profiles = pp.load(self.forwarders)
         self.internal = [d.lower() for d in cfg.get("internal_domains") or []]
         th = cfg.get("thresholds") or {}
         self.auto, self.review, self.margin = int(th.get("auto", 85)), int(th.get("review", 60)), int(th.get("margin", 10))
@@ -62,15 +65,14 @@ class EmailProcessor:
     # Nhan dien
     # ------------------------------------------------------------------
 
-    def detect_forwarder(self, sender: str) -> tuple[str, dict[str, list[str]]]:
-        addr = (sender or "").lower().strip()
-        domain = addr.rsplit("@", 1)[-1] if "@" in addr else ""
-        for f in self.forwarders:
-            if addr and addr in [x.lower() for x in f.get("senders") or []]:
-                return f["name"], f.get("field_aliases") or {}
-            if domain and domain in [x.lower() for x in f.get("domains") or []]:
-                return f["name"], f.get("field_aliases") or {}
-        return "", {}
+    def detect_forwarder(self, sender: str, subject: str = "") -> tuple[str, dict[str, list[str]]]:
+        """Giu chu ky cu cho code dang dung; ben trong da chay Parser Profile."""
+        r = self.resolve_profile(sender, subject)
+        return r.forwarder, r.aliases()
+
+    def resolve_profile(self, sender: str, subject: str = "") -> pp.Resolved:
+        """Email den tu Forwarder nao, nhan vien nao - de chon dung bo mau doc."""
+        return pp.resolve(self.parser_profiles, sender, subject)
 
     def _shipment_refs(self, s: Session, today: dt.date) -> list[em.ShipmentRef]:
         if self._refs is not None:
@@ -119,10 +121,13 @@ class EmailProcessor:
         if s.execute(select(Email.id).where(Email.message_id == m.message_id)).first():
             return None
         ref_date = m.received_at.date() if m.received_at else today
-        forwarder, extra_alias = self.detect_forwarder(m.sender)
-        alias_index = ep.build_alias_index(self.base_aliases, extra_alias)
+        profile = self.resolve_profile(m.sender, m.subject)
+        forwarder = profile.forwarder
+        alias_index = ep.build_alias_index(self.base_aliases, profile.aliases())
         body_text = f"{m.subject}\n{m.body}"
         body_fields = ep.extract_fields(body_text, alias_index, ref_date)
+        # Pattern rieng cua Forwarder / nhan vien do THANG alias chung (cu the hon)
+        body_fields.update(ep.normalize_extracted(profile.extract(body_text), ref_date))
 
         e = Email(message_id=m.message_id, conversation_id=m.conversation_id or "", in_reply_to=m.in_reply_to or "",
                   direction=m.direction, folder=m.folder, sender=m.sender, recipients=m.recipients[:2000],
@@ -134,7 +139,7 @@ class EmailProcessor:
         pdf_fields: dict[str, Any] = {}
         pdf_text_all = []
         for a in m.attachments:
-            att = self._store_attachment(s, e, a, alias_index, ref_date)
+            att = self._store_attachment(s, e, a, alias_index, ref_date, profile)
             if att.parse_status == "OK":
                 pdf_text_all.append(att.parsed.pop("_text", ""))
                 for k, v in att.parsed.items():
@@ -169,7 +174,8 @@ class EmailProcessor:
                 self._notify(s, e, [], f"Email {e.category} chua ghep duoc lo nao", "INFO")
         return e
 
-    def _store_attachment(self, s: Session, e: Email, a, alias_index, ref_date) -> EmailAttachment:
+    def _store_attachment(self, s: Session, e: Email, a, alias_index, ref_date,
+                          profile: pp.Resolved | None = None) -> EmailAttachment:
         folder = self.settings.mail_dir / f"{ref_date:%Y}" / f"{ref_date:%m}" / str(e.id)
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / _safe_name(a.filename)
@@ -180,7 +186,10 @@ class EmailProcessor:
             text, status, err = extract_text(a.content)
             att.parse_status, att.parse_error = status, err
             if status == "OK":
-                att.parsed = {**ep.extract_fields(text, alias_index, ref_date), "_text": text[:20000]}
+                parsed = ep.extract_fields(text, alias_index, ref_date)
+                if profile is not None:
+                    parsed.update(ep.normalize_extracted(profile.extract(text), ref_date))
+                att.parsed = {**parsed, "_text": text[:20000]}
         else:
             att.parse_status = "SKIPPED"
         s.add(att)

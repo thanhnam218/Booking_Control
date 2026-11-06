@@ -77,6 +77,49 @@ def days_until(exfty: dt.date, today: dt.date | None = None) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Deadline Warning - truc DOC LAP voi Status va Color (SRSv5.1 muc 1, 16)
+#
+# SRSv5.1 muc 1: "Status, Color va Deadline Warning la ba khai niem doc lap".
+# SRSv5.1 muc 16: lo chua book ma con duoi 14 ngay -> vien do. Vien do la
+# DEADLINE WARNING, khong phai Business Status:
+#
+#       Status  = NOT_BOOKED                  (nghiep vu, luu trong DB)
+#       Color   = WHITE                       (lop hien thi)
+#       Warning = BOOKING_DEADLINE_WARNING    (canh bao han, tinh rieng)
+#
+# Nguong 14 ngay lay tu cau hinh (deadlines.booking_window.end_days_before) chu
+# khong hard-code, vi SRS yeu cau moc phai chinh duoc.
+# ---------------------------------------------------------------------------
+
+WARN_NONE = ""
+WARN_BOOKING_DEADLINE = "BOOKING_DEADLINE_WARNING"   # chua book, sat han booking
+WARN_BOOKING_OVERDUE = "BOOKING_OVERDUE"             # chua book, da qua ngay xuat
+
+
+def booking_warning(
+    *, booked: bool, exfty: dt.date | None, cfg, today: dt.date | None = None,
+    closed: bool = False,
+) -> str:
+    """Canh bao han booking cho MOT lo hang.
+
+    booked  : lo da co booking chua (Business Status, khong phai mau)
+    closed  : lo da xong / da huy -> khong canh bao nua
+    """
+    if closed or booked or exfty is None:
+        return WARN_NONE
+    days = days_until(exfty, today)
+    if days < 0:
+        return WARN_BOOKING_OVERDUE
+    return WARN_BOOKING_DEADLINE if days < cfg.booking_window.end_days_before else WARN_NONE
+
+
+WARNING_LABELS = {
+    WARN_BOOKING_DEADLINE: "Sắp quá hạn booking",
+    WARN_BOOKING_OVERDUE: "Chưa book mà đã qua ngày xuất",
+}
+
+
+# ---------------------------------------------------------------------------
 # Kiem tra du lieu moc T-3 (SRS muc 47)
 # ---------------------------------------------------------------------------
 

@@ -289,3 +289,21 @@ def test_stale_planning_row_is_reported_after_date_change(scanned):
     with session_scope() as s:
         reasons = [e.reason for e in s.execute(select(ExceptionRecord)).scalars()]
     assert any("dong cu van con" in r for r in reasons)
+
+
+def test_shipment_codes_unique_when_clock_day_differs_from_scan_day(engine):
+    """Lo chua co EX-FACT DATE lay ngay quet de danh so.
+
+    Truoc day bo dem thu tu dung `today` truyen vao con ma lo hang lai tu goi
+    dt.date.today(). Qua nua dem (hoac quet lai du lieu cu) hai ngay lech nhau ->
+    sinh trung shipment_code va ca lan quet do hong.
+    """
+    from freezegun import freeze_time
+
+    # Dong ho that = mot ngay CO trong du lieu mau, khac han ngay quet
+    with freeze_time("2026-09-23 08:00:00"):
+        engine.run_scan(today=TODAY, deliver_notifications=False)
+
+    with session_scope() as s:
+        codes = list(s.execute(select(Shipment.shipment_code)).scalars())
+    assert len(codes) == len(set(codes)), "shipment_code bi trung"

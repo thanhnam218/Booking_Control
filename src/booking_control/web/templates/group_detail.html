@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}{{ g.label }} - {{ app_name }}{% endblock %}
+{% block content %}
+<h2>{{ g.label }}</h2>
+<p class="page-sub">Nhóm lô xuất &middot; {{ g.shipment_count }} lô &middot; {{ g.jo_count }} JO
+  &middot; {{ g.go_count }} GO {% if g.deadline %}&middot; {{ g.deadline }}{% endif %}
+  &middot; <a href="/followup?buyer={{ g.buyer }}&date_from={{ g.exfty }}&date_to={{ g.exfty }}">mở trên lưới</a></p>
+
+<div class="kpis">
+  <div><b>{{ '{:,.0f}'.format(g.total_pcs) }}</b><span>PCS</span></div>
+  <div><b>{{ '{:,.0f}'.format(g.total_ctns) }}</b><span>CTNS</span></div>
+  <div><b>{{ '{:,.1f}'.format(g.total_gw) }}</b><span>G.W (kg)</span></div>
+  <div><b>{{ '%.2f'|format(g.total_cbm) }}</b><span>CBM{% if g.missing_cbm %} (thiếu {{ g.missing_cbm }} lô){% endif %}</span></div>
+</div>
+
+<div class="two">
+  <div class="card">
+    <h3>Container dự kiến cho cả nhóm</h3>
+    {% if g.plan.quantities %}
+      <p style="font-size:20px;margin:6px 0">
+        {% for t, n in g.plan.quantities.items() %}{% if n %}<span class="ctag big">{{ n }} × {{ t }}</span>{% endif %}{% endfor %}
+      </p>
+      <table><tbody>
+        <tr><td>Kiểu booking</td><td><b>{{ g.plan.mode or '—' }}</b></td></tr>
+        <tr><td>Sức chứa ước tính</td><td class="mono">{{ '%.1f'|format(g.plan.capacity or 0) }} CBM</td></tr>
+        <tr><td>Dư</td><td class="mono">{{ '%.1f'|format(g.plan.excess or 0) }} CBM</td></tr>
+        <tr><td>Trạng thái</td><td><span class="st {{ g.plan.status }}">{{ g.plan.status }}</span></td></tr>
+      </tbody></table>
+    {% else %}
+      <p class="muted">{{ g.plan.type or 'Chưa tính được — thiếu CBM.' }}</p>
+    {% endif %}
+    {% if g.plan.note %}<p class="muted" style="font-size:12px">{{ g.plan.note }}</p>{% endif %}
+    {% if g.missing_cbm %}
+      <div class="flash warn" style="margin-top:10px">{{ g.missing_cbm }} lô chưa có CBM —
+        con số container ở trên chưa đủ căn cứ, cần điền CBM rồi tính lại.</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h3>Booking của nhóm</h3>
+    {% if g.bookings %}
+      <p>{% for b in g.bookings %}<a class="tag" href="/bookings?q={{ b }}">{{ b }}</a> {% endfor %}</p>
+      {% if g.bookings|length > 1 %}
+        <p class="muted" style="font-size:12px">Nhóm này đang nằm trên {{ g.bookings|length }} booking —
+          đúng nghiệp vụ, forwarder có thể tách một nhóm thành nhiều booking.</p>
+      {% endif %}
+    {% else %}
+      <p class="muted">Chưa lô nào trong nhóm có số booking.</p>
+    {% endif %}
+    <h3 style="margin-top:14px">GO trong nhóm</h3>
+    {% if g.details.gos %}
+      <div class="jolist">{% for go in g.details.gos %}<span class="gotag">{{ go }}</span>{% endfor %}</div>
+    {% else %}<p class="muted">Chưa có GO.</p>{% endif %}
+  </div>
+</div>
+
+<div class="card scroll-x">
+  <h3>{{ rows|length }} lô trong nhóm</h3>
+  <table class="gtable">
+    <thead><tr><th>NO</th><th>JO</th><th>GO</th><th class="right">PCS</th><th class="right">CTNS</th>
+      <th class="right">G.W</th><th class="right">CBM</th><th>CONT TYPE</th>
+      <th>Trạng thái nghiệp vụ</th><th>Màu</th><th>Cảnh báo</th><th>Booking</th><th>Phụ trách</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td class="mono">{{ r.no or '—' }}</td>
+        <td class="mono"><a href="/shipments/{{ r.code }}">{{ r.jo or r.code }}</a></td>
+        <td class="mono">{{ r.go or '—' }}</td>
+        <td class="right mono">{{ '{:,.0f}'.format(r.pcs) if r.pcs else '—' }}</td>
+        <td class="right mono">{{ '{:,.0f}'.format(r.ctns) if r.ctns else '—' }}</td>
+        <td class="right mono">{{ '{:,.1f}'.format(r.gw) if r.gw else '—' }}</td>
+        <td class="right mono">{{ '%.2f'|format(r.cbm) if r.cbm is not none else '—' }}</td>
+        <td>{{ r.cont_type or '—' }}</td>
+        <td>{{ labels.get(r.biz, r.biz) }}</td>
+        <td><span class="pill {{ r.status }}">{{ r.status }}</span></td>
+        <td>{% if r.warn %}<span class="warn-chip">⚠</span>{% else %}—{% endif %}</td>
+        <td class="mono">{{ r.booking_no or '—' }}</td>
+        <td class="muted">{{ r.assigned_to or '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

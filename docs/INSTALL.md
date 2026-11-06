@@ -1,178 +1,365 @@
-# Hướng dẫn cài đặt — Windows
+# Hướng dẫn cài đặt và chạy
 
-Tài liệu đi từ máy trắng đến hệ thống chạy ổn định cho cả phòng. Làm theo đúng thứ tự.
+**Booking Control 3.3.0** — web nội bộ, chạy trên một máy Windows làm máy chủ, cả phòng mở bằng trình duyệt.
 
-**Mô hình triển khai khuyến nghị:** một máy Windows (PC để bàn hoặc laptop luôn bật trong giờ làm) làm **máy chủ nội bộ**. Máy này đọc được các file Excel Follow Up / Weekly Planning (qua OneDrive đã sync hoặc thư mục chia sẻ), chạy web + Automation. Mọi người khác chỉ cần trình duyệt Chrome/Edge, **không cài gì**.
+> Chỉ **máy chủ** cần cài Python. Người dùng chỉ cần trình duyệt Edge hoặc Chrome.
 
-> Dùng một mình trên laptop cá nhân cũng được — bỏ qua mục 7 (mạng LAN).
+Mục lục:
+[1. Chuẩn bị](#1-chuẩn-bị) ·
+[2. Cài đặt](#2-cài-đặt-trong-5-phút) ·
+[3. Chạy thử](#3-chạy-thử-với-dữ-liệu-demo) ·
+[4. Tài khoản](#4-tạo-tài-khoản-cho-cả-phòng) ·
+[5. Dữ liệu thật](#5-trỏ-vào-dữ-liệu-thật) ·
+[6. Mạng LAN](#6-mở-cho-cả-phòng-dùng-chung-mạng-lan) ·
+[7. Chạy nền](#7-chạy-nền-tự-động) ·
+[8. Cấu hình](#8-cấu-hình-chi-tiết) ·
+[9. Sao lưu](#9-sao-lưu-và-khôi-phục) ·
+[10. Nâng cấp](#10-nâng-cấp) ·
+[11. Sự cố](#11-khắc-phục-sự-cố)
 
 ---
 
-## 1. Cài Python (chỉ trên máy chủ)
+## 1. Chuẩn bị
 
-1. Tải Python **3.11 trở lên**: <https://www.python.org/downloads/windows/>
-2. Ở màn hình đầu tiên của bộ cài, **tích ô `Add python.exe to PATH`**. Bỏ qua bước này là nguyên nhân số 1 khiến các bước sau báo lỗi.
-3. Kiểm tra — mở **PowerShell** (Start → gõ `powershell`):
+### Máy chủ
 
-```powershell
-python --version        # phải ra Python 3.11.x hoặc cao hơn
+| | Tối thiểu | Nên có |
+|---|---|---|
+| Hệ điều hành | Windows 10 | Windows 11 hoặc Windows Server |
+| RAM | 4 GB | 8 GB |
+| Ổ đĩa trống | 2 GB | 10 GB (backup + chứng từ) |
+| Python | 3.11 | 3.12 hoặc 3.13 |
+
+Máy chủ nên là máy **luôn bật** — nếu tắt thì Automation không quét và cả phòng không mở được web.
+
+### Cài Python
+
+Tải tại <https://www.python.org/downloads/windows/>.
+
+> **Quan trọng:** khi cài, tick ô **“Add python.exe to PATH”** ở màn hình đầu tiên. Quên tick thì phải gỡ ra cài lại.
+
+Kiểm tra:
+
+```bat
+python --version
 ```
 
----
+Phải hiện `Python 3.11.x` trở lên.
 
-## 2. Tải mã nguồn
+### Quyền truy cập file
 
-```powershell
-cd C:\Tools
-git clone https://github.com/<tài-khoản>/booking-control.git
-cd booking-control
-```
+Tài khoản Windows chạy phần mềm phải **đọc và ghi** được:
 
-Không có Git: trên GitHub bấm `Code` → `Download ZIP`, giải nén vào `C:\Tools\booking-control`.
+- các file Follow Up của từng nhân viên;
+- file WEEKLY PLANNING, Custom Code, MM-Daily, Lịch xuất hàng.
 
-> Đặt mã nguồn ở thư mục **không đồng bộ OneDrive** (ví dụ `C:\Tools\`). Database nằm trong `data\` — để trong OneDrive dễ bị xung đột khi đang ghi.
+Nếu file nằm trên OneDrive/SharePoint thì dùng **đường dẫn đã đồng bộ về máy** (kiểu `C:\Users\...\OneDrive - Công ty\...`), không dùng địa chỉ web.
 
 ---
 
-## 3. Chạy script cài đặt
+## 2. Cài đặt trong 5 phút
+
+Chép (hoặc giải nén) thư mục mã nguồn vào `C:\Tools\booking-control`, rồi mở **PowerShell**:
 
 ```powershell
+cd C:\Tools\booking-control
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\scripts\install.ps1
 ```
 
-Script làm 5 việc: tạo môi trường ảo `.venv` → cài thư viện → tạo `config\config.yaml` + `config\buyer_rules.yaml` → **tạo tài khoản `admin`** (hỏi mật khẩu 2 lần, tối thiểu 8 ký tự có cả chữ và số) → tạo bộ dữ liệu demo trong `sample_data\`.
+Script làm 5 việc:
 
-> `Set-ExecutionPolicy -Scope Process` chỉ có tác dụng trong cửa sổ PowerShell đang mở, không thay đổi cài đặt bảo mật của máy.
+1. tạo môi trường ảo `.venv`;
+2. cài thư viện (1–3 phút);
+3. tạo `config\config.yaml` và `config\buyer_rules.yaml`;
+4. **hỏi mật khẩu để tạo tài khoản `admin`** — nhập 2 lần, tối thiểu 8 ký tự, phải có cả chữ và số;
+5. tạo bộ dữ liệu demo trong `sample_data\`.
+
+Xong sẽ thấy `=== XONG ===`.
+
+### Nếu muốn làm từng bước
+
+```powershell
+py -3 -m venv .venv
+.venv\Scripts\python.exe -m pip install --upgrade pip
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv\Scripts\python.exe -m pip install -e .
+.venv\Scripts\python.exe -m booking_control init
+.venv\Scripts\python.exe -m booking_control user add admin --role admin --display-name "Quản trị"
+.venv\Scripts\python.exe -m booking_control sample
+```
 
 ---
 
-## 4. Chạy thử với dữ liệu demo
+## 3. Chạy thử với dữ liệu demo
 
-```powershell
+```bat
 .\scripts\run.bat run
 ```
 
-Mở <http://127.0.0.1:8765> → đăng nhập `admin`. Automation quét lần đầu ngay khi khởi động: 3 file Follow Up demo, 6 sheet, ~37 lô hàng, đủ các màu trạng thái. Vào **Follow Up (lưới Excel)** để xem khung 47 cột.
+Mở trình duyệt: **<http://127.0.0.1:8765>** — đăng nhập `admin` với mật khẩu vừa đặt.
 
-Chưa tạo admin ở bước 3? Có hai cách:
-- mở web **trên chính máy chủ** (`http://127.0.0.1:8765`) → trang *Thiết lập lần đầu* hiện ra, tạo Admin tại đó; hoặc
-- `.\scripts\run.bat user add admin --role admin`
+Dừng: bấm `Ctrl + C` trong cửa sổ đang chạy.
 
-Dừng hệ thống: `Ctrl + C` trong cửa sổ đang chạy.
+### Các lệnh khác
+
+| Lệnh | Việc |
+|---|---|
+| `run.bat run` | Chạy web + Automation (dùng hằng ngày) |
+| `run.bat run --no-scheduler` | Chỉ chạy web, tắt Automation (khi muốn xem lại dữ liệu mà không quét) |
+| `run.bat run --host 0.0.0.0` | Mở cho mạng LAN |
+| `run.bat check` | Kiểm tra file, nhận diện sheet, map cột — **chạy lệnh này trước khi chạy thật** |
+| `run.bat scan --dry-run` | Quét thử, báo sẽ ghi gì nhưng **không ghi** |
+| `run.bat scan` | Quét một lần rồi thoát |
+| `run.bat status` | In nhanh số liệu hiện tại |
+| `run.bat outlook` | Đọc email Outlook ngay |
+| `run.bat outlook --demo` | Nạp 5 email mẫu để thử (không cần Outlook) |
+| `run.bat backups F02` | Liệt kê / khôi phục backup file đích |
+| `run.bat user list` | Danh sách tài khoản |
+| `run.bat version` | Phiên bản |
+
+### Nên làm quen với dữ liệu demo trước
+
+Bộ demo có 5 buyer, 37 lô, đủ các trạng thái trắng/vàng/xanh/đỏ, có lô hold, lô xuất một phần, lô đã hủy. Dùng nó để:
+
+- xem lưới Follow Up 47 cột hoạt động thế nào;
+- thử phân công, thử xuất Excel;
+- thử gõ công thức vào ô;
+- xem trang **Nhóm lô xuất** và **5 bảng xương sống**.
+
+Dữ liệu demo nằm riêng trong `sample_data\`, xóa lúc nào cũng được.
 
 ---
 
-## 5. Tạo tài khoản cho cả phòng
+## 4. Tạo tài khoản cho cả phòng
 
-Đăng nhập `admin` → **Quản trị › Người dùng** → *Thêm tài khoản*:
+### Cách 1 — trên web (dễ hơn)
 
-| Vai trò | Dùng cho | Thấy gì |
+Đăng nhập `admin` → **Quản trị › Nhân viên** → *Thêm* → đặt mật khẩu tạm.
+Người đó đăng nhập lần đầu sẽ bị bắt đổi mật khẩu.
+
+### Cách 2 — dòng lệnh
+
+```bat
+.\scripts\run.bat user add nam.nguyen --role user --display-name "Nguyễn Văn Nam"
+.\scripts\run.bat user add lan.tran  --role manager --display-name "Trần Thị Lan"
+.\scripts\run.bat user passwd nam.nguyen
+.\scripts\run.bat user disable nghi.le
+```
+
+### Năm vai trò
+
+| Vai trò | Thấy gì | Làm được gì |
 |---|---|---|
-| **Quản trị** | 1–2 người phụ trách hệ thống | mọi thứ, gồm người dùng / mapping / cài đặt / backup |
-| **Quản lý** | trưởng nhóm logistics | tất cả lô, phân công, Exception, nhập/xuất Excel, Automation |
-| **Người dùng** | nhân viên làm booking | chỉ lô được giao cho mình (chính hoặc dự phòng) |
-| **Chỉ xem** | kế toán, kho, sếp xem báo cáo | xem tất cả, không sửa |
+| `admin` | Tất cả | Toàn quyền, kể cả cấu hình và tài khoản |
+| `manager` | Tất cả | Phân công, duyệt, xử lý exception, nhập Excel |
+| `user` | **Chỉ lô được giao** | Sửa lô của mình, tạo booking, nộp chứng từ |
+| `viewer` | Tất cả | Chỉ xem, không sửa |
+| `auditor` | Tất cả | Chỉ đọc + xem Audit Log |
 
-Hệ thống tự sinh **mật khẩu tạm** (hiện một lần trên màn hình) — gửi riêng cho người đó; họ bị bắt đổi mật khẩu ở lần đăng nhập đầu. Quên mật khẩu: Admin bấm **Đặt lại MK**, hoặc chạy `.\scripts\run.bat user passwd <tên>`.
+Tên đăng nhập: 2–40 ký tự, chữ/số/`.`/`_`/`-`, **không dấu tiếng Việt, không khoảng trắng**.
 
-Có thể khai báo sẵn danh sách tài khoản trong `config\config.yaml` mục `users:` — hệ thống chỉ tạo tài khoản **chưa có mật khẩu**; Admin vẫn phải đặt mật khẩu tạm trên web.
-
-> Tên đăng nhập trong `users:` nên **trùng** với `owner:` của file Follow Up tương ứng (mục 6). Khi đó lô hàng đọc từ file của ai sẽ tự giao cho người đó.
+Tài khoản **không bị xóa** (giữ lịch sử) — chỉ khóa.
 
 ---
 
-## 6. Trỏ vào file Excel thật
+## 5. Trỏ vào dữ liệu thật
 
-Mở `config\config.yaml` bằng Notepad / VS Code, sửa mục `files:`:
+Mở `config\config.yaml`, sửa mục `files:`.
 
 ```yaml
 files:
   - id: "F01-NAM"
     role: "follow_up"
-    display_name: "Follow Up - Nam"
-    path: "C:/Users/nam/OneDrive - Cong ty/Logistics/Follow Up - Nam.xlsx"
-    owner: "nam.nguyen"          # = tên đăng nhập -> lô trong file tự giao cho người này
-    write: true                  # cho phép tô màu dòng theo trạng thái
-    color_skip_columns: ["A"]    # cột NO là công thức, đang tô vàng -> không tô đè
+    display_name: "Follow Up - Nguyễn Văn Nam"
+    path: "C:/Users/may-chu/OneDrive - Cong ty/Logistics/FollowUp_Nam.xlsx"
+    owner: "nam.nguyen"          # trùng tên đăng nhập
+    read: true
+    write: true                  # cho phép tô màu dòng
+    # color_skip_columns: ["A"]  # cột công thức người dùng tự tô vàng -> đừng đụng
 
   - id: "F02"
     role: "weekly_planning"
-    path: "C:/Users/nam/OneDrive - Cong ty/Chung/WEEKLY PLANNING 2026.xlsx"
-    sheet: "2026"
-    header_row: 1
+    path: "C:/.../WEEKLY PLANNING 2026.xlsx"
+    sheet: "2026"                # để trống = tự tìm sheet có header khớp
+    header_row: 1                # để trống = tự dò
+    owner: "common"
+    read: true
     write: true
 ```
 
-| Quy tắc đường dẫn | |
-|---|---|
-| Dùng `/` hoặc `\\` | `C:/Users/...` — **một** dấu `\` sẽ lỗi |
-| Có dấu cách / tiếng Việt | được, miễn có `"` bao ngoài; file lưu UTF-8 |
-| OneDrive / SharePoint | dùng **đường dẫn đã sync về máy**, không dùng URL `https://` |
+**Vai trò file** (`role`):
 
-Tìm đường dẫn nhanh: mở file trong Excel → `File` → `Info` → `Copy path`, bỏ cặp `"` ở hai đầu. Nếu OneDrive để chế độ *Files On-Demand*: chuột phải file → `Always keep on this device`.
+| role | File | Hệ thống làm gì |
+|---|---|---|
+| `follow_up` | Follow Up từng nhân viên | Đọc dữ liệu chính, tô màu dòng |
+| `weekly_planning` | WEEKLY PLANNING | Ghi vào ở mốc D-7 |
+| `custom_code` | Custom Code / HS Code | Ghi vào ở mốc D-7 |
+| `mm_daily` | MM-DAILY PLANNING | Ghi vào |
+| `shipping_schedule` | Lịch xuất hàng | Ghi vào ở mốc D-1, tách sheet TDV/TGV |
 
-**Buyer thật** khai báo trong `config\buyer_rules.yaml` (file này không lên GitHub). Buyer nào thiếu, lần quét đầu sẽ báo `EX008` kèm đúng tên. Cùng file có `forwarder_rules:` (Buyer + Mode + Dest → Forwarder).
+> Đường dẫn dùng dấu `/` hoặc `\\` (hai gạch chéo ngược). Một gạch `\` sẽ lỗi.
 
-**Rule tự phân công** trong `config\config.yaml` mục `assignment:` — ví dụ mọi lô SAMSUNG giao cho `user_b`, dự phòng `user_a`.
+### Kiểm tra trước khi chạy thật
 
-Kiểm tra trước khi chạy thật:
-
-```powershell
-.\scripts\run.bat check            # file nào có / thiếu / đang mở, sheet nào nhận là Follow Up, cột nào chưa map
-.\scripts\run.bat scan --dry-run   # hệ thống SẼ làm gì — không file nào bị đụng tới
+```bat
+.\scripts\run.bat check
 ```
 
-| Vấn đề | Cách sửa |
-|---|---|
-| Sheet Follow Up bị bỏ qua | Web → Quản trị › **Mapping** → chọn `Follow Up` → Lưu (nhớ vĩnh viễn) |
-| Cột quan trọng chưa map | Thêm tên cột vào `aliases` trong `config\field_mapping.yaml` |
-| Buyer thiếu rule (`EX008`) | Thêm vào `config\buyer_rules.yaml` |
+Lệnh này in ra:
 
----
+- file nào **tồn tại**, file nào **đang bị mở** (khóa);
+- sheet nào được nhận là Follow Up, độ tin cậy bao nhiêu phần trăm;
+- cột nào map được, cột nào chưa — **cột chưa map không gây lỗi**, chỉ là hệ thống không dùng đến;
+- cột nào là công thức, ô nào merge, chỗ nào openpyxl sẽ làm hỏng.
 
-## 7. Máy chủ nội bộ cho cả phòng (mạng LAN)
+Cột quan trọng mà chưa map → thêm bí danh vào `config\field_mapping.yaml`, hoặc vào web **Quản trị › Mapping** xác nhận một lần.
 
-1. Trong `config\config.yaml`:
+### Chạy thử không ghi
 
-   ```yaml
-   web:
-     host: "0.0.0.0"     # nghe trên mọi card mạng
-     port: 8765
-   ```
-
-2. Mở cổng tường lửa — PowerShell **Run as administrator**:
-
-   ```powershell
-   .\scripts\open_firewall.ps1        # chỉ mở cho mạng Private/Domain, không mở cho Public
-   ```
-
-   Script in ra địa chỉ cho đồng nghiệp, ví dụ `http://192.168.1.20:8765`.
-
-3. Khởi động lại hệ thống (`Ctrl+C` rồi `.\scripts\run.bat run`, hoặc khởi động lại máy nếu đã cài chạy nền ở mục 8).
-
-4. Nên đặt **IP tĩnh** cho máy chủ (hoặc nhờ IT đặt DHCP reservation) để địa chỉ không đổi. Có tên miền nội bộ / IIS / nginx làm HTTPS thì đặt `auth.secure_cookie: true`.
-
-> Máy chủ phải **bật và đăng nhập Windows** trong giờ làm việc; Automation chỉ chạy khi hệ thống đang chạy. Tắt chế độ Sleep: *Settings → System → Power → Screen and sleep → Never* (khi cắm điện).
-
----
-
-## 8. Chạy nền tự động khi đăng nhập Windows
-
-```powershell
-.\scripts\install_autostart.ps1          # đăng ký Scheduled Task "BookingControl"
-.\scripts\install_autostart.ps1 -Remove  # gỡ
+```bat
+.\scripts\run.bat scan --dry-run
 ```
 
-Task chạy `scripts\start_server_hidden.vbs` — không hiện cửa sổ, tự khởi động lại nếu tiến trình bị tắt bất thường. Kiểm tra: *Task Scheduler → Task Scheduler Library → BookingControl*. Nhật ký: `data\logs\`.
+Báo cáo sẽ ghi bao nhiêu dòng vào file nào, đổi màu bao nhiêu dòng — **nhưng không đụng vào file**. Xem kỹ rồi mới:
 
-> Task chạy dưới tài khoản Windows đang đăng nhập để đọc được OneDrive của tài khoản đó. Không chạy dưới SYSTEM.
+```bat
+.\scripts\run.bat scan
+```
+
+### Nhập dữ liệu từ file Excel ngoài
+
+File không theo khung 47 cột (ví dụ *Shipment schedule* hàng trăm cột) thì **không khai trong `files:`**. Thay vào đó vào web: **Quản lý › Nhập Excel ngoài** — xem [USER_GUIDE.md](USER_GUIDE.md).
 
 ---
 
-## 9. Email thông báo (tùy chọn)
+## 6. Mở cho cả phòng dùng chung (mạng LAN)
 
-Mặc định thông báo hiện trên web (chuông 🔔 + Desktop Notification khi tab đang mở). Muốn gửi thêm email cho người phụ trách với cảnh báo CRITICAL:
+### Bước 1 — cho phép nghe trên mọi địa chỉ
+
+Trong `config\config.yaml`:
+
+```yaml
+web:
+  host: "0.0.0.0"     # thay cho 127.0.0.1
+  port: 8765
+```
+
+### Bước 2 — mở tường lửa
+
+PowerShell **quyền Administrator**:
+
+```powershell
+.\scripts\open_firewall.ps1
+```
+
+Hoặc làm tay:
+
+```powershell
+New-NetFirewallRule -DisplayName "Booking Control" -Direction Inbound `
+  -Protocol TCP -LocalPort 8765 -Action Allow -Profile Domain,Private
+```
+
+### Bước 3 — lấy địa chỉ máy chủ
+
+```powershell
+ipconfig | Select-String IPv4
+```
+
+Gửi cho cả phòng: `http://<địa-chỉ-IP>:8765` — ví dụ `http://192.168.1.20:8765`.
+
+### Lưu ý
+
+- Trang tạo Admin đầu tiên **chỉ mở được trên chính máy chủ** (`auth.allow_remote_setup: false`).
+- Chạy sau HTTPS (IIS/nginx reverse proxy) thì đặt `auth.secure_cookie: true`.
+- Hàng chục người dùng cùng lúc: SQLite đã bật WAL và chờ khóa 15 giây, đủ cho một phòng. Đông hơn nữa thì xem §8.6.
+
+---
+
+## 7. Chạy nền tự động
+
+Để máy chủ khởi động cùng Windows, không cần ai mở cửa sổ:
+
+```powershell
+.\scripts\install_autostart.ps1
+```
+
+Script tạo tác vụ trong Task Scheduler, chạy `scripts\start_server_hidden.vbs` (ẩn cửa sổ).
+
+Kiểm tra: mở **Task Scheduler** → tìm `BookingControl`.
+
+Gỡ:
+
+```powershell
+Unregister-ScheduledTask -TaskName "BookingControl" -Confirm:$false
+```
+
+**Xem log khi chạy nền:** thư mục `data\logs\`.
+
+---
+
+## 8. Cấu hình chi tiết
+
+Tất cả trong `config\`. Sửa xong **khởi động lại** phần mềm.
+
+| File | Nội dung | Có trong git? |
+|---|---|---|
+| `config.yaml` | Đường dẫn file, lịch quét, deadline, container, web, Outlook | Không (chứa đường dẫn nội bộ) |
+| `buyer_rules.yaml` | Buyer, CO, quy tắc gom lô, **Buyer × Forwarder** | Không |
+| `field_mapping.yaml` | Bí danh tên cột, quy tắc JO–GO | Có |
+| `followup_template.yaml` | 47 cột, công thức, **quyền từng cột** | Có |
+| `workflow.yaml` | Bước B1–B15.1, **chứng từ bắt buộc + hạn + ai làm** | Có |
+| `email_profiles.yaml` | **Bộ đọc email từng Forwarder**, ngưỡng ghép lô | Có |
+
+> Hai file `.yaml` không nằm trong git có bản mẫu `.example.yaml` đi kèm. Cài mới sẽ chép từ bản mẫu.
+
+Xem toàn bộ năm bảng quy tắc và **kiểm tra chéo giữa chúng**: web → **Quản lý › 5 bảng xương sống**.
+
+### 8.1 Lịch quét
+
+```yaml
+scheduler:
+  scan_interval_hours: 3        # 1–4
+  scan_anchor_hour: 9           # mốc đầu: 09:00, 12:00, 15:00, 18:00
+  run_on_start: true
+  notification_window:
+    start: "08:00"
+    end: "16:00"
+  active_weekdays: ["mon","tue","wed","thu","fri","sat"]
+  queue_outside_window: true    # ngoài giờ vẫn quét, dồn thông báo lại
+```
+
+### 8.2 Deadline
+
+```yaml
+deadlines:
+  booking_window:
+    start_days_before: 20       # bắt đầu nhắc
+    end_days_before: 14         # hạn chót — quá mốc này thì viền đỏ
+  hold_reminder_days: 3         # 1–7
+  milestones:
+    weekly_planning_days_before: 7
+    custom_code_days_before: 7
+    final_info_days_before: 3
+    shipping_schedule_days_before: 1
+  dedup_hours: 20               # chống spam thông báo
+  overdue_grace_days: 3
+```
+
+### 8.3 Container
+
+```yaml
+container:
+  capacity: { "40HC": 63, "40DC": 53, "20ST": 23 }
+  priority: ["40HC", "40DC", "20ST"]
+  strategy: "priority"          # priority | min_excess
+  lcl_threshold_cbm: 15
+  safety_factor: 1.0
+  air_type: "AC"
+  lcl_type: "CFS"
+```
+
+### 8.4 Email thông báo (tùy chọn)
 
 ```yaml
 notification:
@@ -182,134 +369,259 @@ notification:
     smtp_host: "smtp.company.local"
     smtp_port: 25
     sender: "booking-control@company.com"
-    base_url: "http://192.168.1.20:8765"
+    password_env: "BOOKINGCTL_SMTP_PASSWORD"   # mật khẩu để trong biến môi trường
+    base_url: "http://192.168.1.20:8765"       # để chèn link vào email
 ```
 
-Mật khẩu SMTP (nếu có) đặt trong biến môi trường `BOOKINGCTL_SMTP_PASSWORD`, **không** ghi vào file cấu hình. Email lấy từ hồ sơ từng người (Tài khoản của tôi).
+**Không ghi mật khẩu vào file config.** Đặt biến môi trường cho tài khoản chạy dịch vụ:
 
----
+```powershell
+[Environment]::SetEnvironmentVariable("BOOKINGCTL_SMTP_PASSWORD","matkhau","User")
+```
 
-## 9b. Đọc email booking từ Outlook desktop
+### 8.5 Đọc email Outlook (tùy chọn)
 
-Hệ thống đọc **Outlook desktop cài trên chính máy chủ** (không dùng Microsoft Graph, không cần quyền Azure). Yêu cầu:
+Yêu cầu: máy chủ **cài Outlook desktop**, đang mở hộp thư, và có `pywin32`.
 
-1. Máy chủ cài Outlook (Microsoft 365 / Outlook 2016+), đăng nhập hộp thư nhận email booking (hộp thư cá nhân hoặc hộp thư dùng chung, ví dụ `booking@company.com`).
-2. Outlook **đang mở** trong phiên Windows đang chạy Booking Control (cùng tài khoản Windows). Chạy nền bằng Task Scheduler thì chọn *Run only when user is logged on*.
-3. `pywin32` đã được `install.ps1` cài sẵn (kiểm tra: `.venv\Scripts\python -c "import win32com.client"`).
-
-Bật trong `config\config.yaml`:
+```powershell
+.venv\Scripts\python.exe -m pip install "pywin32>=306"
+```
 
 ```yaml
-jobs:
-  outlook_interval_minutes: 30       # đọc mỗi 30 phút
 outlook:
   enabled: true
-  mailbox: ""                        # để trống = hộp thư mặc định; hoặc "booking@company.com"
-  folders: ["Inbox", "Sent Items"]   # Sent Items: email yêu cầu booking mình gửi -> nhớ Conversation
-  lookback_days: 14                  # lần đầu đọc lùi 14 ngày, sau đó chỉ đọc email mới
-  auto_apply: true                   # false = mọi email vào hàng chờ duyệt
+  mailbox: ""                        # để trống = hộp thư mặc định
+  folders: ["Inbox", "Sent Items"]   # Sent Items để nhớ Conversation của email mình gửi
+  lookback_days: 14                  # lần đầu đọc lùi 14 ngày
+  auto_apply: true                   # email đủ điểm và không mâu thuẫn -> tự cập nhật
 ```
 
-Thư mục con (ví dụ rule Outlook chuyển email forwarder vào `Inbox/Booking`) ghi `folders: ["Inbox/Booking", "Sent Items"]`.
+Thử ngay:
 
-Chạy thử ngay: `.\scripts\run.bat outlook` → bảng email vừa đọc. Trên máy không có Outlook: `.\scripts\run.bat outlook --demo` nạp 5 email mẫu để xem hàng chờ duyệt.
+```bat
+.\scripts\run.bat outlook
+.\scripts\run.bat outlook --demo     # 5 email mẫu, không cần Outlook
+```
 
-**Tinh chỉnh theo forwarder thật** — `config\email_profiles.yaml`:
+Khai **bộ đọc riêng cho từng Forwarder** trong `email_profiles.yaml` — xem [USER_GUIDE.md](USER_GUIDE.md) mục *5 bảng xương sống*.
 
-- `forwarders`: tên miền / địa chỉ gửi của từng forwarder (nhận diện forwarder + nhãn riêng của họ).
-- `field_aliases`: nhãn trong email / PDF (vd forwarder ghi "Sailing date:" thay cho "ETD:" → thêm `"sailing date"` vào `etd`).
-- `categories`: từ khóa phân loại (thêm tiếng Việt / tiếng Hàn nếu cần).
-- `thresholds` / `weights`: điểm tự ghép (mặc định ≥ 85 tự áp dụng, 60–84 chờ duyệt).
+### 8.6 Đổi sang SQL Server / PostgreSQL
 
-File PDF đính kèm được đọc bằng `pdfplumber` (PDF có lớp chữ). PDF scan ảnh → báo `NO_TEXT`, email vẫn vào hàng chờ duyệt để người dùng xem.
+SQLite chỉ cho **một người ghi tại một thời điểm**. Vài chục người thì vẫn ổn (đã bật WAL + chờ khóa 15 giây). Đông hơn, hoặc muốn backup tập trung:
 
----
+```yaml
+database:
+  url: "mssql+pyodbc://user:pass@SERVER/BookingControl?driver=ODBC+Driver+17+for+SQL+Server"
+  # hoặc
+  # url: "postgresql+psycopg://user:pass@server/booking_control"
+```
 
-## 9c. Thư mục chứng từ
+Cài thêm driver:
 
-Mặc định chứng từ lưu ở `data\documents\Năm\Buyer\NO\LOẠI\`. Muốn lưu ở ổ mạng / NAS:
+```powershell
+.venv\Scripts\python.exe -m pip install pyodbc          # SQL Server
+.venv\Scripts\python.exe -m pip install "psycopg[binary]"  # PostgreSQL
+```
+
+Bảng sẽ tự tạo ở lần chạy đầu. **Dữ liệu cũ trong SQLite không tự chuyển sang** — cần xuất/nhập thủ công.
+
+### 8.7 Thư mục chứng từ
 
 ```yaml
 documents:
-  root: "\\\\nas01\\logistics\\booking-docs"   # tài khoản Windows chạy dịch vụ phải có quyền ghi
+  root: ""                      # để trống = <data_dir>/documents
+  # root: "\\\\server\\share\\chung-tu"      # hoặc để trên NAS
   max_upload_mb: 25
 ```
 
-Loại chứng từ, chứng từ bắt buộc theo Mode / Buyer / Forwarder, hạn nộp và quy trình B1 → B15.1 nằm trong `config\workflow.yaml` (sửa file, khởi động lại là áp dụng; task chưa xong tự cập nhật theo cấu hình mới).
-
 ---
 
-## 10. Sao lưu
+## 9. Sao lưu và khôi phục
 
-| Cần sao lưu | Ở đâu | Gợi ý |
+### Cái gì cần sao lưu
+
+| Đường dẫn | Nội dung | Mức quan trọng |
 |---|---|---|
-| Database | `data\booking_control.db` | copy hằng ngày sang ổ khác / NAS (dừng hệ thống hoặc copy lúc ít người dùng) |
-| Cấu hình | `config\config.yaml`, `config\buyer_rules.yaml`, `config\email_profiles.yaml`, `config\workflow.yaml` | copy mỗi khi sửa |
-| Chứng từ + file đính kèm email | `data\documents\`, `data\mail\` (hoặc `documents.root`) | sao lưu cùng database |
-| Bản sao file Excel đích trước mỗi lần ghi | `data\backups\` | tự động, giữ 20 bản/file; khôi phục ở Quản trị › Backup |
+| `data\booking_control.db` | **Toàn bộ dữ liệu nghiệp vụ** | Sống còn |
+| `data\documents\` | File chứng từ đã nộp | Sống còn |
+| `config\` | Cấu hình, quy tắc | Cao |
+| `data\backups\` | Backup file Excel đích | Trung bình |
+| `data\logs\` | Nhật ký | Thấp |
 
-Chuyển sang SQL Server / PostgreSQL khi nhiều người dùng: đổi `database.url` (xem ví dụ trong `config.example.yaml`), cài driver (`pyodbc` hoặc `psycopg`), khởi động lại — bảng được tạo tự động.
+### Sao lưu hằng ngày
 
----
-
-## 11. Phát bản chạy không cần Python (tùy chọn)
+Tạo `backup.ps1`:
 
 ```powershell
-.\scripts\build_exe.ps1
+$src = "C:\Tools\booking-control"
+$dst = "D:\Backup\booking-control\$(Get-Date -Format yyyy-MM-dd)"
+New-Item -ItemType Directory -Force $dst | Out-Null
+Copy-Item "$src\data\booking_control.db" $dst
+Copy-Item "$src\config" $dst -Recurse -Force
+Copy-Item "$src\data\documents" $dst -Recurse -Force -ErrorAction SilentlyContinue
+Get-ChildItem "D:\Backup\booking-control" | Sort-Object Name -Descending |
+  Select-Object -Skip 30 | Remove-Item -Recurse -Force
 ```
 
-Tạo `dist\BookingControl\` — copy cả thư mục sang máy chủ khác, sửa `config\config.yaml`, tạo admin (`BookingControl.exe user add admin --role admin`), bấm **`Chay Booking Control.bat`**.
+Hẹn giờ chạy lúc 23:00 mỗi ngày:
+
+```powershell
+$t = New-ScheduledTaskTrigger -Daily -At 23:00
+$a = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-File D:\Scripts\backup.ps1"
+Register-ScheduledTask -TaskName "BookingControl-Backup" -Trigger $t -Action $a
+```
+
+> Nên **dừng phần mềm** trước khi chép file `.db`, hoặc dùng `sqlite3 .backup` để chép an toàn khi đang chạy.
+
+### Backup file Excel đích
+
+Hệ thống tự backup **trước mỗi lần ghi**, giữ 20 bản (`excel_write.backup_keep_versions`).
+
+```bat
+.\scripts\run.bat backups F02
+```
+
+Khôi phục: web → **Quản trị › Backup** → chọn bản → *Khôi phục*.
+
+### Khôi phục toàn bộ
+
+1. Dừng phần mềm.
+2. Chép `booking_control.db`, thư mục `config\` và `documents\` từ bản backup về.
+3. Chạy lại.
 
 ---
 
-## 12. Nâng cấp từ v2 lên v3
+## 10. Nâng cấp
 
-1. Dừng hệ thống, **sao lưu `data\`** (database + backups).
-2. `git pull` (hoặc chép mã nguồn mới), rồi `.venv\Scripts\pip install -r requirements.txt` (thêm `pdfplumber`).
-3. Thêm vào `config\config.yaml` các mục mới từ `config.example.yaml`: `outlook` (dạng mới), `documents`, `weekly_planning`. Mục `outlook.booking_confirm_keywords` / `cancel_keywords` cũ không còn dùng — từ khóa nằm trong `config\email_profiles.yaml`.
-4. Khởi động lại: bảng mới (booking, email, chứng từ, task) và cột mới được tạo tự động. Lần quét đầu: mỗi số BOOKING NO có trong Follow Up thành một booking (cùng số trên nhiều lô → booking gộp), task B1 → B15.1 được sinh cho lô có EX-FACT từ 30 ngày trước đến 75 ngày tới.
-5. Tạo tài khoản Auditor nếu cần: `.\scripts\run.bat user add ten.ks --role auditor`.
+```powershell
+cd C:\Tools\booking-control
+# Dừng phần mềm trước
+git pull
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv\Scripts\python.exe -m pip install -e .
+.\scripts\run.bat run
+```
+
+**Không mất dữ liệu.** Lần chạy đầu sau nâng cấp, hệ thống tự:
+
+- thêm cột mới với giá trị mặc định;
+- tạo index mới;
+- đổi tên cột cũ (nâng từ v1).
+
+File `config\config.yaml` của bạn **không bị ghi đè**. Bản mới có thêm mục cấu hình thì xem trong `config\config.example.yaml` rồi chép sang phần mình cần.
+
+Trình duyệt tự nạp lại CSS/JS mới — đường dẫn tệp tĩnh mang dấu vân tay theo nội dung, không cần xóa cache tay.
+
+**Vẫn nên sao lưu `data\booking_control.db` trước khi nâng cấp.**
 
 ---
 
-## 13. Nâng cấp từ v1 (Booking Deadline Bot)
+## 11. Khắc phục sự cố
 
-1. Dừng bản cũ, gỡ task cũ: trong thư mục cũ chạy `.\scripts\install_autostart.ps1 -Remove`.
-2. Cài bản mới vào thư mục mới (mục 2–3). Copy `config\config.yaml` và `config\buyer_rules.yaml` cũ sang, rồi thêm các mục mới từ `config.example.yaml`: `assignment`, `auth`, `jobs`, `notification.email`, `web.host` (các mục `toast` / `popup` / `tray_balloon` cũ không còn dùng — xóa đi).
-3. Database v1 dùng tiếp được (copy `data\bookingbot.db` → `data\booking_control.db`): cột mới tự thêm khi khởi động. Cột `bot_status` / `last_bot_color` cũ bị bỏ qua — trạng thái được tính lại ngay ở lần quét đầu.
-4. Tạo tài khoản (mục 5). Lần quét đầu tự giao lô cho chủ file Follow Up.
+### Không khởi động được
 
----
+| Thông báo | Nguyên nhân | Xử lý |
+|---|---|---|
+| `Chua cai dat. Hay chay install.ps1` | Chưa có `.venv` | Chạy `.\scripts\install.ps1` |
+| `KHONG TIM THAY PYTHON` | Chưa cài hoặc quên tick Add to PATH | Cài lại Python, nhớ tick |
+| `error while attempting to bind on address ... 8765` | Cổng đang bị chiếm | Xem bên dưới |
+| `Database chua duoc khoi tao` | Chưa chạy `init` | `.\scripts\run.bat` bất kỳ lệnh nào sẽ tự khởi tạo |
 
-## Lỗi thường gặp
+**Cổng 8765 bị chiếm** — thường do một bản cũ còn chạy ngầm:
 
-| Thông báo | Nguyên nhân & cách sửa |
+```powershell
+Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
+  Where-Object { $_.CommandLine -like '*booking_control run*' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+```
+
+Hoặc đổi cổng trong `config.yaml › web.port`.
+
+### Đăng nhập
+
+| Vấn đề | Xử lý |
 |---|---|
-| `python : The term 'python' is not recognized` | Python chưa vào PATH — cài lại, tích `Add python.exe to PATH` |
-| `running scripts is disabled` | Chạy `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` trong cùng cửa sổ |
-| Đồng nghiệp không mở được web | `web.host` chưa là `"0.0.0.0"`; chưa chạy `open_firewall.ps1`; mạng Wi-Fi đang để *Public* (đổi sang *Private*); máy chủ đang Sleep |
-| `Chưa có Admin có mật khẩu` khi khởi động | Mở web trên chính máy chủ để tạo, hoặc `run.bat user add admin --role admin` |
-| Trang *Thiết lập lần đầu* báo chỉ mở trên máy chủ | Đúng — vì an toàn; mở bằng `http://127.0.0.1:8765` trên máy chủ |
-| `Sai mật khẩu quá nhiều lần` | Chờ 10 phút, hoặc Admin đặt lại mật khẩu |
-| `Không tìm thấy file Follow Up` | Sai đường dẫn trong `config.yaml` — lấy lại bằng File → Info → Copy path |
-| `File vẫn bị khóa sau 3 lần thử` | Ai đó đang mở file đích; hệ thống đưa vào hàng chờ và tự ghi lần sau — **không mất dữ liệu** |
-| `DATA CHANGED / CONFLICT` (EX007) | Có người sửa file trong lúc hệ thống đang ghi; hệ thống đã dừng, không ghi đè |
-| Ô trên lưới báo *vừa được người khác cập nhật* | Hai người cùng sửa một dòng; dòng đã tải lại bản mới nhất, nhập lại nếu cần |
-| Cổng 8765 đang bị chiếm | Đổi `web.port`, ví dụ `8766` (và mở lại tường lửa với `-Port 8766`) |
-| `ModuleNotFoundError: booking_control` | Chạy sai Python — luôn dùng `scripts\run.bat` |
-| Job `outlook_scan` lỗi *Can Windows + Outlook desktop dang mo + pywin32* | Outlook chưa mở trong phiên Windows đang chạy hệ thống, hoặc chạy nền dưới tài khoản khác — mở Outlook, chạy Task Scheduler với *Run only when user is logged on* |
-| Outlook hỏi *A program is trying to access e-mail...* | Chính sách bảo mật Outlook: cài antivirus được Windows Security nhận diện, hoặc nhờ IT cho phép truy cập lập trình (Trust Center › Programmatic Access) |
-| Email booking luôn vào *Chưa ghép* | Email không có JO / INVOICE / Booking No trùng dữ liệu: ghép tay một lần (hệ thống nhớ Conversation) hoặc thêm nhãn vào `email_profiles.yaml` |
-| PDF đính kèm báo `NO_TEXT` | PDF scan ảnh, không có lớp chữ — xem file đính kèm và nhập tay |
+| Quên mật khẩu | `.\scripts\run.bat user passwd <tên>` |
+| Sai 5 lần, bị khóa | Chờ 10 phút, hoặc đổi `auth.max_failed_logins` |
+| `Chưa có Admin có mật khẩu` | Mở web **trên chính máy chủ** để tạo, hoặc `user add admin --role admin` |
+| Đăng nhập xong lại văng ra | Xóa cookie trình duyệt, hoặc kiểm tra `auth.secure_cookie` (chỉ bật khi thật sự có HTTPS) |
+
+### File Excel
+
+| Vấn đề | Xử lý |
+|---|---|
+| `Khong tim thay file` | Kiểm tra `path`, dùng `/` hoặc `\\`; OneDrive đã đồng bộ về máy chưa |
+| `File dang bi khoa` | Ai đó đang mở file. Hệ thống tự thử lại 30s → 60s → 120s, rồi xếp hàng chờ. **Không ép ghi.** |
+| Sheet không được nhận | `run.bat check` xem độ tin cậy; vào **Quản trị › Mapping** xác nhận một lần |
+| Cột không map được | Thêm bí danh vào `field_mapping.yaml`, hoặc xác nhận trên trang Mapping |
+| Công thức bị mất sau khi hệ thống ghi | Không xảy ra — ghi lossless. Nếu gặp, gửi file + log để kiểm tra |
+
+### Dữ liệu trông sai
+
+| Hiện tượng | Giải thích |
+|---|---|
+| Sửa Excel mà web không đổi | Chờ lần quét kế tiếp, hoặc bấm **Quét ngay** trên thanh trên cùng |
+| Web khác Excel | **Giá trị web thắng** — người dùng đã sửa tay. Xem Exception Center (`EX015`) |
+| Lô biến mất khỏi lưới | Có thể đã lưu trữ, hoặc bộ lọc *Ẩn lô đã xong / hủy* đang bật |
+| Nhân viên không thấy lô | Đúng thiết kế — chỉ thấy lô được giao. Quản lý vào **Phân công** để giao |
+| Màu không đúng mong đợi | Mở chi tiết lô → thẻ **Vì sao …?** giải thích từng bước |
+
+### Thông báo
+
+| Vấn đề | Xử lý |
+|---|---|
+| Không có thông báo nào | Ngoài khung giờ `08:00–16:00` thì bị dồn lại. Xem `scheduler.notification_window` |
+| Quá nhiều thông báo | Tăng `deadlines.dedup_hours` |
+| Email không gửi được | Kiểm tra `notification.email.enabled`, SMTP host/port, biến môi trường mật khẩu |
+
+### Outlook
+
+| Vấn đề | Xử lý |
+|---|---|
+| `Khong ket noi duoc Outlook` | Outlook desktop phải **đang mở** trên máy chủ; kiểm tra `pywin32` đã cài |
+| Email không ghép được lô | Vào trang **Email Outlook**, chọn lô thủ công — hệ thống sẽ nhớ Conversation cho lần sau |
+| PDF không đọc được | PDF ảnh scan không có lớp chữ (`NO_TEXT`) — cần nhập tay |
+| Đọc sai số booking của một Forwarder | Khai mẫu riêng cho Forwarder đó trong `email_profiles.yaml` |
+
+### Xem log
+
+```powershell
+Get-Content data\logs\booking_control.log -Tail 50 -Wait
+```
+
+Đổi mức chi tiết: `config.yaml › app.log_level` (`DEBUG` / `INFO` / `WARNING`).
+
+### Kiểm tra sức khỏe hệ thống
+
+```bat
+.\scripts\run.bat status
+```
+
+Và trên web: **Quản lý › 5 bảng xương sống** — trang này tự đối chiếu các bảng cấu hình với nhau và báo chỗ vênh (rule trỏ tới bộ đọc email không tồn tại, chứng từ bắt buộc chưa ghi ai làm…).
 
 ---
 
-## Gỡ cài đặt
+## 12. Gỡ cài đặt
 
-```powershell
-.\scripts\install_autostart.ps1 -Remove
-.\scripts\open_firewall.ps1 -Remove        # Run as administrator
-Remove-Item -Recurse -Force .venv, data    # xóa môi trường ảo + database
-```
+1. Dừng phần mềm, gỡ tác vụ tự khởi động:
+   ```powershell
+   Unregister-ScheduledTask -TaskName "BookingControl" -Confirm:$false
+   ```
+2. Gỡ luật tường lửa:
+   ```powershell
+   Remove-NetFirewallRule -DisplayName "Booking Control"
+   ```
+3. **Sao lưu `data\` và `config\` trước khi xóa.**
+4. Xóa thư mục `C:\Tools\booking-control`.
 
-Hệ thống không ghi gì vào Registry và không cài gì ra ngoài thư mục dự án. File Excel của bạn giữ nguyên.
+File Excel gốc của bạn **không bị ảnh hưởng** — hệ thống chỉ đọc và tô màu dòng.
+
+---
+
+## Tài liệu liên quan
+
+| Tài liệu | Dành cho |
+|---|---|
+| [USER_GUIDE.md](USER_GUIDE.md) | Người dùng hằng ngày |
+| [SPECIFICATION.md](SPECIFICATION.md) | Hiểu hệ thống làm gì và theo quy tắc nào |
+| [ARCHITECTURE.md](ARCHITECTURE.md) · [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) | Người sửa mã nguồn |

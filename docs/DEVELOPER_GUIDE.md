@@ -3,7 +3,6 @@
 ## Chuẩn bị môi trường
 
 ```bash
-git clone https://github.com/<tài-khoản>/booking-control.git
 cd booking-control
 
 python -m venv .venv
@@ -458,9 +457,9 @@ Nếu file .exe báo thiếu module, thêm vào `--hidden-import` trong script. 
 
 ---
 
-## CI
+## Kiểm tra trước khi phát hành
 
-`.github/workflows/ci.yml` chạy trên Ubuntu + Windows, Python 3.11 + 3.12:
+Chạy tuần tự trên máy phát triển:
 
 ```
 ruff check  →  pytest --cov  →  sample + check + scan --dry-run
